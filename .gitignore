@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+
+# Ambiente Virtual
+.venv/
+venv/
+env/
+
+# Variáveis de Ambiente e Segredos
+.env
+.env.*
+
+# Banco de Dados
+*.db
+*.sqlite3
+data/*.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log

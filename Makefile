@@ -1,19 +1,37 @@
-.PHONY: setup etl clean
+.PHONY: up down restart logs verify shell clean
 
-# Default variables (can be overridden: make etl MUNICIPALITY=162 YEAR=2024)
-MUNICIPALITY ?= 162
-YEAR ?= 2024
+# Project Variables
+COMPOSE = docker compose
+SERVICE_NAME = app
 
-setup:
-	@echo "Creating virtual environment and installing dependencies..."
-	uv venv
-	uv pip install -r requirements.txt
+# Start the environment (builds if necessary)
+up:
+	@echo "Starting Docker environment..."
+	$(COMPOSE) up -d --build
+	@echo "Environment running. Use 'make logs' to see output."
 
-etl:
-	@echo "Running ETL for Municipality $(MUNICIPALITY) - Year $(YEAR)..."
-	.venv/bin/python -m src.etl.main --municipality $(MUNICIPALITY) --year $(YEAR)
+# Stop the environment
+down:
+	@echo "Stopping Docker environment..."
+	$(COMPOSE) down
 
-clean:
-	@echo "Cleaning temporary files..."
-	rm -rf __pycache__ .pytest_cache
-	find . -type d -name "__pycache__" -delete
+# Restart the environment
+restart: down up
+
+# View logs
+logs:
+	$(COMPOSE) logs -f $(SERVICE_NAME)
+
+# Run the verification script inside the container
+verify:
+	@echo "Running verification script..."
+	$(COMPOSE) exec $(SERVICE_NAME) python src/execution/verify_docker_env.py
+
+# Open a shell inside the container
+shell:
+	$(COMPOSE) exec $(SERVICE_NAME) bash
+
+# Clean up temporary files and stop containers
+clean: down
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type d -name ".pytest_cache" -exec rm -rf {} +

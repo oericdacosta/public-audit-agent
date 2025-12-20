@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    container_name: public-audit-agent
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./evals:/app/evals
+      - /var/run/docker.sock:/var/run/docker.sock # Essential for spawning sibling containers
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DOCKER_NETWORK_NAME=public-audit-agent_net
+      - MCP_HOST=app # The hostname shim will use to connect back
+      - MCP_PORT=8000
+    networks:
+      - public-audit-agent_net
+
+networks:
+  public-audit-agent_net:
+    name: public-audit-agent_net
+    driver: bridge

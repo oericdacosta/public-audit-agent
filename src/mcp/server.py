@@ -55,8 +55,14 @@ def query_sql(sql_query: str) -> str:
         JSON string containing the query results.
     
     Examples:
+    Examples:
         - "SELECT * FROM licitacoes WHERE valor_estimado > 10000 LIMIT 5"
         - "SELECT sum(valor_pago) FROM despesas WHERE mes_referencia = '202401'"
+        
+    Usage Guide:
+        - Always limit your results (LIMIT 10) to avoid huge payloads.
+        - Date columns are typically TEXT in ISO8601 format (YYYY-MM-DD).
+        - Join 'despesas' and 'receitas' on 'municipio_id'.
     """
     try:
         conn = get_ro_connection()
@@ -76,6 +82,35 @@ def query_sql(sql_query: str) -> str:
         return f"SQL Error: {str(e)} (Ensure you are running SELECT queries only)"
     except Exception as e:
         return f"Error executing query: {str(e)}"
+
+@mcp.tool()
+def search_definitions(query: str) -> str:
+    """
+    Searches table names and schema definitions (DDL) for a given keyword.
+    Use this to find relevant tables when you don't know the exact name.
+    
+    Examples:
+        - "educacao" (Finds tables related to education)
+        - "pagamento" (Finds tables with payment columns)
+        - "fornecedor" (Finds supplier tables)
+    """
+    conn = get_ro_connection()
+    cursor = conn.cursor()
+    keyword = f"%{query}%"
+    
+    # Search in table names and sql definition
+    cursor.execute("SELECT name, sql FROM sqlite_master WHERE type='table' AND (name LIKE ? OR sql LIKE ?)", (keyword, keyword))
+    results = cursor.fetchall()
+    conn.close()
+    
+    if not results:
+        return f"No tables found matching '{query}'"
+        
+    output = []
+    for name, sql in results:
+        output.append(f"Table: {name}\nDefinition: {sql}\n---")
+        
+    return "\n".join(output)
 
 if __name__ == "__main__":
     import argparse

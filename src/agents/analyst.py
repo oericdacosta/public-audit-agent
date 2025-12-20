@@ -31,7 +31,8 @@ RULES:
 
 4. ATTENTION: The database is **SQLite**.
    - DO NOT use `information_schema`.
-   - Use `list_tables()` to see the tables (already imported).
+   - Use `search_definitions(keyword)` to find tables related to your query (e.g., 'educacao', 'saude').
+   - Use `list_tables()` ONLY if you need a full overview.
    - Use `describe_table(table_name)` to see the schema (already imported).
    - Dates are in TEXT format (ISO 8601) or similar.
 

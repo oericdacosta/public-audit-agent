@@ -78,4 +78,27 @@ def query_sql(sql_query: str) -> str:
         return f"Error executing query: {str(e)}"
 
 if __name__ == "__main__":
-    mcp.run()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--transport", default="stdio", choices=["stdio", "sse", "http", "tcp"])
+    parser.add_argument("--port", type=int, default=8000)
+    args = parser.parse_args()
+
+    if args.transport == "tcp":
+        import asyncio
+        from src.mcp.tcp_server import start_tcp_server
+        print(f"Starting MCP Server on TCP - 0.0.0.0:{args.port}")
+        # Run async server loop
+        asyncio.run(start_tcp_server(mcp, port=args.port))
+    elif args.transport == "sse":
+        import uvicorn
+        print(f"Starting MCP Server on SSE - 0.0.0.0:8000")
+        app = mcp.sse_app()
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    elif args.transport == "http": # Alias for streamable-http
+        import uvicorn
+        print(f"Starting MCP Server on HTTP - 0.0.0.0:8000")
+        app = mcp.streamable_http_app()
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    else:
+        mcp.run()

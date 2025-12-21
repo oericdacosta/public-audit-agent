@@ -25,7 +25,12 @@ logs:
 # Run the verification script inside the container
 verify:
 	@echo "Running verification script..."
-	$(COMPOSE) exec $(SERVICE_NAME) python src/execution/verify_docker_env.py
+	$(COMPOSE) exec $(SERVICE_NAME) python src/execution/verify_langgraph.py
+
+# Initialize the database schema (Creates tables with metadata)
+init-db:
+	@echo "Initializing database schema..."
+	$(COMPOSE) exec $(SERVICE_NAME) python -c "from src.etl.database import DatabaseManager; DatabaseManager().initialize_schema(); print('Database schema initialized!')"
 
 # Open a shell inside the container
 shell:

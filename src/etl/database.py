@@ -27,15 +27,16 @@ class DatabaseManager:
                 municipio_id TEXT,
                 numero_licitacao TEXT,
                 numero_processo TEXT,
-                objeto_licitacao TEXT,
-                modalidade_licitacao TEXT,
-                data_realizacao_licitacao TEXT,
-                valor_estimado REAL,
-                situacao_licitacao TEXT,
-                exercicio_orcamento TEXT,
+                objeto_licitacao TEXT, -- Description of object (e.g., School Lunch/Merenda, Renovation/Reforma)
+                modalidade_licitacao TEXT, -- procurement_type (e.g., Pregão, Concorrência)
+                data_realizacao_licitacao TEXT, -- date_of_tender (ISO8601 YYYY-MM-DD)
+                valor_estimado REAL, -- estimated_value (The max value the gov expects to pay)
+                situacao_licitacao TEXT, -- status (e.g., Concluída, Deserta, Fracassada)
+                exercicio_orcamento TEXT, -- fiscal_year (YYYY)
                 raw_data JSON,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
+            /* Metadata: Tenders and Contracts table (licitacao). Search here for purchases, works, and services. */
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_lic_municipio ON licitacoes(municipio_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_lic_objeto ON licitacoes(objeto_licitacao)")
@@ -45,20 +46,21 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS despesas (
                 id TEXT PRIMARY KEY,
                 municipio_id TEXT,
-                exercicio_orcamento TEXT,
-                mes_referencia TEXT,
-                codigo_orgao TEXT,
-                codigo_unidade_orcamentaria TEXT,
-                codigo_funcao TEXT,
-                codigo_subfuncao TEXT,
-                codigo_programa TEXT,
-                codigo_elemento_despesa TEXT,
-                valor_empenhado REAL,
-                valor_liquidado REAL,
-                valor_pago REAL,
+                exercicio_orcamento TEXT, -- fiscal_year
+                mes_referencia TEXT, -- reference_month (YYYYMM or MM)
+                codigo_orgao TEXT, -- org_code
+                codigo_unidade_orcamentaria TEXT, -- budget_unit_code
+                codigo_funcao TEXT, -- Functional classification (e.g., 12=Education/educacao, 10=Health/saude)
+                codigo_subfuncao TEXT, -- Subfunction (more specific area)
+                codigo_programa TEXT, -- program_code
+                codigo_elemento_despesa TEXT, -- expense_element_code (nature of expense)
+                valor_empenhado REAL, -- committed_value (Funds reserved/promised)
+                valor_liquidado REAL, -- verified_value (Service/Product delivered and verified)
+                valor_pago REAL, -- paid_value (Actual money transfer to supplier)
                 raw_data JSON,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
+            /* Metadata: Public Expenses and Spending table. Contains data for Education (educacao), Health (saude), Infrastructure, etc. */
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_desp_municipio ON despesas(municipio_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_desp_data ON despesas(mes_referencia)")
@@ -68,17 +70,18 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS receitas (
                 id TEXT PRIMARY KEY,
                 municipio_id TEXT,
-                exercicio_orcamento TEXT,
-                mes_referencia TEXT,
+                exercicio_orcamento TEXT, -- fiscal_year
+                mes_referencia TEXT, -- reference_month
                 codigo_orgao TEXT,
                 codigo_unidade_orcamentaria TEXT,
-                codigo_receita TEXT,
-                descricao_receita TEXT,
-                valor_orcado REAL,
-                valor_arrecadado REAL,
+                codigo_receita TEXT, -- revenue_code
+                descricao_receita TEXT, -- Revenue source (e.g., Taxes/IPTU, FPM, Royalties)
+                valor_orcado REAL, -- budgeted_value (Expected revenue)
+                valor_arrecadado REAL, -- collected_value (Actual revenue received)
                 raw_data JSON,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
+            /* Metadata: Revenue and Collection table (receita). */
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_rec_municipio ON receitas(municipio_id)")
 

@@ -137,3 +137,19 @@ def describe_table(table_name):
             if content["type"] == "text":
                 return content["text"]
     return ""
+
+def search_definitions(query: str):
+    """
+    Search for table definitions.
+    """
+    response = _rpc_call("tools/call", {
+        "name": "search_definitions",
+        "arguments": {"query": query}
+    }, 2)
+    
+    if "result" in response:
+        res = response["result"]
+        for content in res.get("content", []):
+            if content["type"] == "text":
+                return content["text"]
+    return ""

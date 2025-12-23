@@ -11,6 +11,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock # Essential for spawning sibling containers
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - DOCKER_NETWORK_NAME=public-audit-agent_net
       - MCP_HOST=app # The hostname shim will use to connect back
       - MCP_PORT=8000

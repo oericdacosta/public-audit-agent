@@ -1,21 +1,27 @@
 FROM python:3.11-slim
 
+# Install UV (The Modern Python Package Manager)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
 WORKDIR /app
 
-# Install system dependencies (gcc for potential python build deps)
+# Install system dependencies
+# gcc is still needed for some python extensions compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
+# Copy requirements or pyproject.toml
+# Since we have requirements.txt frozen by uv, we use it directly for stability
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install dependencies using UV (Much faster than pip)
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # Copy source code
 COPY src/ src/
 COPY data/ data/
-# Create empty dirs for logs and evals if they don't exist
 RUN mkdir -p logs evals
 
 # Expose TCP port

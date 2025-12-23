@@ -96,10 +96,11 @@ def search_definitions(query: str) -> str:
     """
     conn = get_ro_connection()
     cursor = conn.cursor()
+    # Search in table names and sql definition (Case Insensitive)
     keyword = f"%{query}%"
     
-    # Search in table names and sql definition
-    cursor.execute("SELECT name, sql FROM sqlite_master WHERE type='table' AND (name LIKE ? OR sql LIKE ?)", (keyword, keyword))
+    # SQLite LIKE is case-insensitive for ASCII, but best to force lower for robust matches
+    cursor.execute("SELECT name, sql FROM sqlite_master WHERE type='table' AND (lower(name) LIKE lower(?) OR lower(sql) LIKE lower(?))", (keyword, keyword))
     results = cursor.fetchall()
     conn.close()
     

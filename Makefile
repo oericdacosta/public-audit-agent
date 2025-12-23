@@ -22,10 +22,10 @@ restart: down up
 logs:
 	$(COMPOSE) logs -f $(SERVICE_NAME)
 
-# Run the verification script inside the container
+# Run the verification script inside the container (Tests Agent + Critic)
 verify:
 	@echo "Running verification script..."
-	$(COMPOSE) exec $(SERVICE_NAME) python src/execution/verify_langgraph.py
+	$(COMPOSE) exec $(SERVICE_NAME) python src/execution/verify_critic.py
 
 # Initialize the database schema (Creates tables with metadata)
 init-db:

@@ -1,4 +1,4 @@
-.PHONY: up down restart logs verify shell clean
+.PHONY: up down restart logs shell clean
 
 # Project Variables
 COMPOSE = docker compose
@@ -22,10 +22,6 @@ restart: down up
 logs:
 	$(COMPOSE) logs -f $(SERVICE_NAME)
 
-# Run the verification script inside the container (Tests Agent + Critic)
-verify:
-	@echo "Running verification script..."
-	$(COMPOSE) exec $(SERVICE_NAME) python src/execution/verify_critic.py
 
 # Initialize the database schema (Creates tables with metadata)
 init-db:

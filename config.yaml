@@ -1,0 +1,34 @@
+# CivicAudit Configuration
+
+# Application Settings
+app:
+  name: "Public Audit Agent"
+  version: "0.1.0"
+  env: "development"
+
+# Data Sources (TCE-CE)
+tce:
+  base_url: "https://api-dados-abertos.tce.ce.gov.br"
+  sim_base_url: "https://api.tce.ce.gov.br/index.php/sim/1_0"
+
+# Audit Target Scope
+audit:
+  city_code: "162" # Sobral
+  year_start: "2024"
+
+# AI Agents Configuration
+agent:
+  analyst_model: "gpt-4o-mini"
+  critic_model: "gemini-2.5-flash"
+  max_retries: 3
+  recursion_limit: 10
+
+# Database Configuration
+database:
+  path: "data/civic_audit.db"
+
+# Sandbox Configuration
+sandbox:
+  image: "python:3.11-slim"
+  timeout: 30
+  memory_limit: "512m"

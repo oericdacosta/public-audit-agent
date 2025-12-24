@@ -17,4 +17,18 @@ dependencies = [
     "requests>=2.32.5",
     "sse-starlette>=3.0.4",
     "uvicorn>=0.40.0",
+    "PyYAML>=6.0",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.10",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B"]
+ignore = []

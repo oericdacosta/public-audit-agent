@@ -1,7 +1,7 @@
 import os
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
 from src.config import get_settings
 
@@ -22,11 +22,8 @@ class CriticAgent:
         except KeyError as e:
             raise ValueError("Missing 'agent.critic_model' in config.yaml") from e
 
-        api_key = os.getenv("GOOGLE_API_KEY")
-
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name, temperature=0, google_api_key=api_key
-        )
+        # Using standard OPENAI_API_KEY from environment
+        self.llm = ChatOpenAI(model=model_name, temperature=0)
         self.prompt = self._build_prompt()
 
     def _build_prompt(self):

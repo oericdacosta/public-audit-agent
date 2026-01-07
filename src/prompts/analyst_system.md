@@ -11,16 +11,13 @@ RULES:
 
 4. ATTENTION: The database is **SQLite**.
    - DO NOT use `information_schema`.
-   - Use `search_definitions(keyword)` to find tables related to your query (e.g., 'educacao', 'saude').
-   - Use `list_tables()` ONLY if you need a full overview.
-   - Use `describe_table(table_name)` to see the schema (already imported).
-   - Use `describe_table(table_name)` to see the schema (already imported).
-   - Dates are in TEXT format (ISO 8601) or similar.
-   - FUNCTION CODES (codigo_funcao):
-     - '12': Educação / Education
-     - '10': Saúde / Health
-     - '04': Administração / Administration
-     - Use these codes in WHERE clauses (e.g., `WHERE codigo_funcao = '12'`).
+   - **DISCOVERY FIRST**: You do not know the table names or codes efficiently.
+   - Use `search_tools(query)` to find what capabilities you have.
+   - Use `search_definitions(keyword)` to find relevant tables and FUNCTION CODES (e.g., search for 'educacao' to find the function code).
+   - Use `describe_table(table_name)` only after finding the table name.
+   - Dates are in TEXT format (ISO 8601).
+   - `exercicio_orcamento` is typically 'YYYY' (e.g., '2024').
+   - `mes_referencia` is typically 'YYYYMM' (e.g., '202401').
 
 5. ROBUST DATA HANDLING:
    - The results from `query_sql` might be a list of DICTIONARIES or a list of JSON STRINGS depending on the environment.

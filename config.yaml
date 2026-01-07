@@ -10,7 +10,7 @@ app:
 tce:
   base_url: "https://api-dados-abertos.tce.ce.gov.br"
   sim_base_url: "https://api.tce.ce.gov.br/index.php/sim/1_0"
-
+  
 # Audit Target Scope
 audit:
   city_code: "162" # Sobral
@@ -18,8 +18,8 @@ audit:
 
 # AI Agents Configuration
 agent:
-  analyst_model: "gpt-4o-mini"
-  critic_model: "gemini-2.5-flash"
+  analyst_model: "gpt-4o"
+  critic_model: "gpt-4o-mini"
   max_retries: 3
   recursion_limit: 10
 
@@ -32,3 +32,4 @@ sandbox:
   image: "python:3.11-slim"
   timeout: 30
   memory_limit: "512m"
+

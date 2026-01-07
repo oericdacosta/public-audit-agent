@@ -119,3 +119,52 @@ class DatabaseManager:
 
         conn.commit()
         conn.close()
+
+    def execute_query(self, query: str) -> list[dict]:
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query)
+            # return as list of dicts
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            raise
+        finally:
+            conn.close()
+
+    def get_all_tables(self) -> list[str]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return tables
+
+    def get_start_schema(self, limit_tables: list[str] = None) -> dict[str, str]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        query = "SELECT name, sql FROM sqlite_master WHERE type='table'"
+        params = []
+        if limit_tables:
+            query += " AND name IN ({})".format(",".join("?" * len(limit_tables)))
+            params = limit_tables
+
+        cursor.execute(query, params)
+        schema = {row[0]: row[1] for row in cursor.fetchall()}
+        conn.close()
+        return schema
+
+    def search_schema(self, keyword: str) -> dict[str, str]:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        # Search table names and sql
+        param = f"%{keyword}%"
+        cursor.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' "
+            "AND (lower(name) LIKE lower(?) OR lower(sql) LIKE lower(?))",
+            (param, param),
+        )
+        results = {row[0]: row[1] for row in cursor.fetchall()}
+        conn.close()
+        return results

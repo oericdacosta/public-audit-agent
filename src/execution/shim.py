@@ -88,7 +88,12 @@ def query_sql(sql_query):
             for content in res.get("content", []):
                 if content["type"] == "text":
                     try:
-                        items.extend(json.loads(content["text"]))
+                        text_val = content["text"].strip()
+                        vals = json.loads(text_val)
+                        if isinstance(vals, list):
+                            items.extend(vals)
+                        else:
+                            items.append(vals)
                     except Exception:
                         items.append(content["text"])
             return items
@@ -156,5 +161,8 @@ def search_definitions(query: str):
         res = response["result"]
         for content in res.get("content", []):
             if content["type"] == "text":
-                return content["text"]
+                try:
+                    return json.loads(content["text"])
+                except Exception:
+                    return content["text"]
     return ""

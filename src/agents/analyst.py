@@ -1,9 +1,12 @@
 import os
+from typing import Optional
+import uuid
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.config import get_settings
 from src.agents.critic import CriticAgent
@@ -28,6 +31,14 @@ def _build_prompt():
             parts.append(f.read())
 
     return "\n\n".join(parts)
+
+
+def _load_static_prompt(filename: str) -> str:
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "prompts", filename
+    )
+    with open(path, "r") as f:
+        return f.read()
 
 
 def _generate_code_logic(user_question: str) -> str:
@@ -77,7 +88,7 @@ def generate(state: AgentState):
 
     return {
         "code": code,
-        "iterations": state["iterations"] + 1,
+        "iterations": state.get("iterations", 0) + 1,
         "error": None,
         "evaluation": None,
     }
@@ -87,7 +98,13 @@ def critique(state: AgentState):
     print("--- NODE: CRITIC ---")
     code = state["code"]
     messages = state["messages"]
-    user_question = messages[0].content
+    
+    # Find the last user message to evaluate against
+    user_question = "Unknown question"
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage):
+            user_question = m.content
+            break
 
     # Internal instantiation is fine here
     from src.agents.critic import CriticAgent
@@ -99,9 +116,14 @@ def critique(state: AgentState):
     return {"evaluation": evaluation}
 
 
+# --- NOTE: The AnalystAgent class has been refactored into src/graph/workflow.py (AuditGraph).
+# This file now only contains the node functions used by the graph.
+
+
 def execute(state: AgentState):
     print("--- NODE: EXECUTE ---")
     code = state["code"]
+    print(f"EXECUTING CODE:\n{code}\n----------------")
     sandbox = DockerSandbox()
     result = sandbox.execute(code)
 
@@ -150,56 +172,16 @@ def check_execution(state: AgentState):
     return END
 
 
-# --- AGENT CLASS ---
+# --- WRAPPER CLASS FOR BACKWARD COMPATIBILITY ---
 
+from src.graph.workflow import AuditGraph
 
 class AnalystAgent:
     """
-    Specialist agent that generates Python code to analyze audit data.
+    Wrapper around AuditGraph to maintain backward compatibility.
     """
-
     def __init__(self):
-        self.graph = self._build_graph()
+        self.workflow = AuditGraph()
 
-    def _build_graph(self):
-        workflow = StateGraph(AgentState)
-
-        workflow.add_node("generate", generate)
-        workflow.add_node("critic", critique)
-        workflow.add_node("execute", execute)
-
-        workflow.set_entry_point("generate")
-
-        workflow.add_edge("generate", "critic")
-
-        workflow.add_conditional_edges(
-            "critic",
-            should_continue,
-            {
-                "generate": "generate",
-                END: "execute",
-            },
-        )
-
-        workflow.add_conditional_edges(
-            "execute", check_execution, {"generate": "generate", END: END}
-        )
-
-        return workflow.compile()
-
-    def run(self, user_question: str) -> str:
-        initial_state = {
-            "messages": [HumanMessage(content=user_question)],
-            "iterations": 0,
-            "error": None,
-            "code": "",
-            "output": "",
-            "evaluation": None,
-        }
-
-        final_state = self.graph.invoke(initial_state, config={"recursion_limit": 10})
-        return final_state.get("output", "No output generated.")
-
-    # Keep a helper for simple generation if needed
-    def generate_code(self, user_question: str) -> str:
-        return _generate_code_logic(user_question)
+    def run(self, user_question: str, thread_id: Optional[str] = None) -> str:
+        return self.workflow.run(user_question, thread_id)

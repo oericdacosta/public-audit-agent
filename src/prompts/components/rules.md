@@ -55,3 +55,10 @@ RULES:
 8. COMMON PITFALLS:
    - **WRONG**: `health_code = item['table']` (This just gets "despesas")
    - **CORRECT**: Parse `item['definition']` line-by-line to find "-- 10: Saúde" and extract "10".
+
+9. PUSH DOWN COMPUTATION (EFFICIENCY):
+    - **NEVER** fetch all rows (`SELECT *`) to count or sum in Python. This is slow and expensive.
+    - **ALWAYS** use SQL aggregations.
+    - WRONG: `data = query("SELECT * FROM despesas"); total = sum(d['val'] for d in data)`
+    - CORRECT: `data = query("SELECT SUM(valor_liquidado) as total FROM despesas ...")`
+    - **VERIFY COLUMNS**: Do not guess `status='liquidated'` if the column is actually `valor_liquidado`. Use `describe_table`!

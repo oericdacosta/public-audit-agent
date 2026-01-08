@@ -26,7 +26,7 @@ def guardrail_input(state: AgentState):
     # Load safety prompt
     safety_prompt = _load_static_prompt("guardrail_input.md")
     
-    # Use a fast model for the check
+    # Use GPT-4o-mini for cost-effective checks
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     
     chain = ChatPromptTemplate.from_messages([
@@ -55,7 +55,7 @@ def guardrail_output(state: AgentState):
     # Load safety prompt
     safety_prompt = _load_static_prompt("guardrail_output.md")
     
-    # Use a fast model for the check
+    # Use GPT-4o-mini for cost-effective checks
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     
     chain = ChatPromptTemplate.from_messages([

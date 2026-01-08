@@ -116,48 +116,8 @@ def critique(state: AgentState):
     return {"evaluation": evaluation}
 
 
-def guardrail_input(state: AgentState):
-    print("--- NODE: GUARDRAIL ---")
-    messages = state["messages"]
-    
-    # Find the last user message
-    user_input = "Unknown input"
-    for m in reversed(messages):
-        if isinstance(m, HumanMessage):
-            user_input = m.content
-            break
-            
-    # Load safety prompt
-    safety_prompt = _load_static_prompt("guardrail_input.md")
-    
-    # Use a fast model for the check
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    
-    chain = ChatPromptTemplate.from_messages([
-        ("system", safety_prompt),
-        ("human", "{input}")
-    ]) | llm
-    
-    response = chain.invoke({"input": user_input})
-    verdict = response.content.strip().upper()
-    
-    print(f"Guardrail Verdict: {verdict}")
-    
-    if "UNSAFE" in verdict:
-        return {
-            "guardrail_verdict": "UNSAFE",
-            "output": "🚫 **Process blocked by Security Policy.**\nYour request was flagged as unsafe or irrelevant to the public audit context."
-        }
-    
-    return {"guardrail_verdict": "SAFE"}
-
-
-def check_guardrail(state: AgentState):
-    verdict = state.get("guardrail_verdict")
-    if verdict == "UNSAFE":
-        print("--- DECISION: BLOCKED BY GUARDRAIL ---")
-        return END
-    return "generate"
+# --- NOTE: The AnalystAgent class has been refactored into src/graph/workflow.py (AuditGraph).
+# This file now only contains the node functions used by the graph.
 
 
 def execute(state: AgentState):
@@ -211,77 +171,16 @@ def check_execution(state: AgentState):
     return END
 
 
-# --- AGENT CLASS ---
+# --- WRAPPER CLASS FOR BACKWARD COMPATIBILITY ---
 
+from src.graph.workflow import AuditGraph
 
 class AnalystAgent:
     """
-    Specialist agent that generates Python code to analyze audit data.
+    Wrapper around AuditGraph to maintain backward compatibility.
     """
-
     def __init__(self):
-        self.memory = MemorySaver()
-        self.graph = self._build_graph()
-
-    def _build_graph(self):
-        workflow = StateGraph(AgentState)
-
-        workflow.add_node("guardrail_input", guardrail_input)
-        workflow.add_node("generate", generate)
-        workflow.add_node("critic", critique)
-        workflow.add_node("execute", execute)
-
-        workflow.set_entry_point("guardrail_input")
-        
-        workflow.add_conditional_edges(
-            "guardrail_input",
-            check_guardrail,
-            {
-                "generate": "generate",
-                END: END
-            }
-        )
-
-        workflow.add_edge("generate", "critic")
-
-        workflow.add_conditional_edges(
-            "critic",
-            should_continue,
-            {
-                "generate": "generate",
-                END: "execute",
-            },
-        )
-
-        workflow.add_conditional_edges(
-            "execute", check_execution, {"generate": "generate", END: END}
-        )
-
-        return workflow.compile(checkpointer=self.memory)
+        self.workflow = AuditGraph()
 
     def run(self, user_question: str, thread_id: Optional[str] = None) -> str:
-        
-        # If no thread_id provided, generate a new one to ensure isolation unless specified
-        if not thread_id:
-            thread_id = str(uuid.uuid4())
-
-        config = {
-            "configurable": {"thread_id": thread_id},
-            "recursion_limit": 10
-        }
-
-        # For a new turn, we only need to provide the new message and reset specific trackers
-        # The 'messages' reducer will handle appending
-        inputs = {
-            "messages": [HumanMessage(content=user_question)],
-            "iterations": 0,
-            "error": None,
-            "evaluation": None
-        }
-
-        final_state = self.graph.invoke(inputs, config=config)
-        return final_state.get("output", "No output generated.")
-
-    # Keep a helper for simple generation if needed
-    def generate_code(self, user_question: str) -> str:
-        return _generate_code_logic(user_question)
+        return self.workflow.run(user_question, thread_id)

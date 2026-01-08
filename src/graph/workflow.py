@@ -8,13 +8,14 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.schemas.state import AgentState
 from src.agents.analyst import generate, critique, execute, check_execution, should_continue
 from src.agents.guardrail import guardrail_input, guardrail_output
+from src.agents.planner import planner
 
 def check_guardrail(state: AgentState):
     verdict = state.get("guardrail_verdict")
     if verdict == "UNSAFE":
         print("--- DECISION: BLOCKED BY GUARDRAIL ---")
         return END
-    return "generate"
+    return "planner"
 
 class AuditGraph:
     """
@@ -31,6 +32,7 @@ class AuditGraph:
 
         # Add Nodes
         workflow.add_node("guardrail_input", guardrail_input)
+        workflow.add_node("planner", planner)
         workflow.add_node("generate", generate)
         workflow.add_node("critic", critique)
         workflow.add_node("execute", execute)
@@ -44,10 +46,13 @@ class AuditGraph:
             "guardrail_input",
             check_guardrail,
             {
-                "generate": "generate",
+                "planner": "planner",
                 END: END
             }
         )
+
+        # Planner -> Generate
+        workflow.add_edge("planner", "generate")
 
         # Generate -> Critic
         workflow.add_edge("generate", "critic")

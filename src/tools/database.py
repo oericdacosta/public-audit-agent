@@ -22,16 +22,16 @@ def describe_table(table_name: str) -> str:
     return f"Table '{table_name}' not found."
 
 
-def search_definitions(query: str) -> str:
+def search_definitions(query: str) -> list[dict]:
     """Searches table names and schema definitions (DDL) for a given keyword."""
     results = db.search_schema(query)
     if not results:
-        return "No definitions found matching your query."
+        return []
 
     output = []
     for table, ddl in results.items():
-        output.append(f"Table: {table}\nDefinition: {ddl}")
-    return "\n".join(output)
+        output.append({"table": table, "definition": ddl})
+    return output
 
 
 def list_tables():

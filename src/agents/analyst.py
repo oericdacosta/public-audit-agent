@@ -172,16 +172,6 @@ def check_execution(state: AgentState):
     return END
 
 
-# --- WRAPPER CLASS FOR BACKWARD COMPATIBILITY ---
+# --- WRAPPER CLASS REMOVED TO FIX CIRCULAR IMPORT ---
+# Use src.graph.workflow.AuditGraph directly.
 
-from src.graph.workflow import AuditGraph
-
-class AnalystAgent:
-    """
-    Wrapper around AuditGraph to maintain backward compatibility.
-    """
-    def __init__(self):
-        self.workflow = AuditGraph()
-
-    def run(self, user_question: str, thread_id: Optional[str] = None) -> str:
-        return self.workflow.run(user_question, thread_id)

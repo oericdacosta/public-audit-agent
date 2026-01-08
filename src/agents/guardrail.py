@@ -1,7 +1,7 @@
 import os
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from src.schemas.state import AgentState
 
 def _load_static_prompt(filename: str) -> str:
@@ -26,8 +26,8 @@ def guardrail_input(state: AgentState):
     # Load safety prompt
     safety_prompt = _load_static_prompt("guardrail_input.md")
     
-    # Use a fast model for the check
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+    # Use GPT-4o-mini for cost-effective checks
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     
     chain = ChatPromptTemplate.from_messages([
         ("system", safety_prompt),
@@ -55,8 +55,8 @@ def guardrail_output(state: AgentState):
     # Load safety prompt
     safety_prompt = _load_static_prompt("guardrail_output.md")
     
-    # Use a fast model for the check
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+    # Use GPT-4o-mini for cost-effective checks
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     
     chain = ChatPromptTemplate.from_messages([
         ("system", safety_prompt),

@@ -25,3 +25,20 @@ for d in data:
 
 print(f"Total spent: {{total}}")
 ```
+
+EXAMPLE OF METADATA QUESTION:
+User: "Qual o nome da tabela de despesas?"
+
+```python
+tables = list_tables()
+found = None
+for t in tables:
+    if "despesa" in t.lower():
+        found = t
+        break
+
+if found:
+    print(f"The table name is: {{found}}")
+else:
+    print("Table not found.")
+```

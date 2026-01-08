@@ -1,19 +1,25 @@
 import asyncio
 import json
 import logging
+import traceback
 
-from mcp.server.fastmcp import FastMCP
+from src.tools.database import describe_table, list_tables, query_sql, search_definitions
 
-# We need to bridge raw TCP sockets to the MCP protocol.
-# FastMCP typically runs on Stdio or SSE.
+# Map tool names to functions
+TOOL_MAP = {
+    "list_tables": list_tables,
+    "query_sql": query_sql,
+    "describe_table": describe_table,
+    "search_definitions": search_definitions,
+}
 
 logger = logging.getLogger(__name__)
 
 
-async def handle_client(reader, writer, mcp_server: FastMCP):
+async def handle_client(reader, writer):
     """
     Handles a single TCP client connection.
-    Connects the TCP stream to the MCP server processing loop.
+    Implements a simple JSON-RPC style protocol for the Sandbox shim.
     """
     addr = writer.get_extra_info("peername")
     print(f"DEBUG: Accepted connection from {addr}")
@@ -26,7 +32,6 @@ async def handle_client(reader, writer, mcp_server: FastMCP):
                 break
 
             message = data.decode().strip()
-            print(f"DEBUG: Received message: {message}")
             if not message:
                 continue
 
@@ -47,27 +52,9 @@ async def handle_client(reader, writer, mcp_server: FastMCP):
                     "id": msg_id,
                     "result": {
                         "protocolVersion": "2024-11-05",
-                        "capabilities": {},
-                        "serverInfo": {"name": "CivicAudit TCP", "version": "1.0"},
+                        "serverInfo": {"name": "CivicAudit TCP", "version": "2.0"},
                     },
                 }
-            elif method == "notifications/initialized":
-                # No response needed
-                pass
-            elif method == "tools/list":
-                # Get tools using public API
-                tools = await mcp_server.list_tools()
-                tools_list = []
-                for tool in tools:
-                    tools_list.append(
-                        {
-                            "name": tool.name,
-                            "description": tool.description,
-                            "inputSchema": tool.inputSchema,
-                        }
-                    )
-
-                resp = {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools_list}}
 
             elif method == "tools/call":
                 params = req.get("params", {})
@@ -75,34 +62,23 @@ async def handle_client(reader, writer, mcp_server: FastMCP):
                 args = params.get("arguments", {})
 
                 try:
-                    # Call using public API
-                    # call_tool returns (content_list, context) or similar
-                    result = await mcp_server.call_tool(name, args)
+                    if name not in TOOL_MAP:
+                        raise ValueError(f"Tool '{name}' not found.")
 
-                    # Result is likely a list of Content objects
-                    # (TextContent, ImageContent, etc) We need to serialize them
-                    content_list = []
+                    tool_func = TOOL_MAP[name]
+                    
+                    # Call the tool (synchronous tools)
+                    result = tool_func(**args)
 
-                    # Handle tuple return if applicable
-                    # (based on inspection it returned a tuple)
-                    actual_result = result
-                    if isinstance(result, tuple):
-                        actual_result = result[0]
-
-                    if isinstance(actual_result, list):
-                        for item in actual_result:
-                            # Check if it has type and text attributes
-                            if hasattr(item, "type") and hasattr(item, "text"):
-                                content_list.append(
-                                    {"type": item.type, "text": item.text}
-                                )
-                            else:
-                                # Fallback serialization
-                                content_list.append({"type": "text", "text": str(item)})
+                    # Serialize result
+                    # Shim expects formatted content or structuredContent
+                    # Our tools return strings mostly, or lists of dicts (for query_sql)
+                    if isinstance(result, (dict, list)):
+                        text_content = json.dumps(result, default=str)
                     else:
-                        content_list.append(
-                            {"type": "text", "text": str(actual_result)}
-                        )
+                        text_content = str(result)
+
+                    content_list = [{"type": "text", "text": text_content}]
 
                     resp = {
                         "jsonrpc": "2.0",
@@ -111,6 +87,7 @@ async def handle_client(reader, writer, mcp_server: FastMCP):
                     }
                 except Exception as e:
                     logger.error(f"Tool call error: {e}")
+                    traceback.print_exc()
                     resp = {
                         "jsonrpc": "2.0",
                         "id": msg_id,
@@ -119,7 +96,6 @@ async def handle_client(reader, writer, mcp_server: FastMCP):
 
             if resp:
                 resp_str = json.dumps(resp) + "\n"
-                print(f"DEBUG: Sending response: {resp_str.strip()}")
                 writer.write(resp_str.encode())
                 await writer.drain()
 
@@ -130,13 +106,27 @@ async def handle_client(reader, writer, mcp_server: FastMCP):
         await writer.wait_closed()
 
 
-async def start_tcp_server(mcp_instance, host="0.0.0.0", port=8000):
-    server = await asyncio.start_server(
-        lambda r, w: handle_client(r, w, mcp_instance), host, port
-    )
+async def start_tcp_server(host="0.0.0.0", port=8000):
+    server = await asyncio.start_server(handle_client, host, port)
 
     addr = server.sockets[0].getsockname()
     print(f"Serving TCP on {addr}")
 
     async with server:
         await server.serve_forever()
+
+
+if __name__ == "__main__":
+    import argparse
+
+    logging.basicConfig(level=logging.INFO)
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8000, help="Port to listen on")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
+    args = parser.parse_args()
+
+    try:
+        asyncio.run(start_tcp_server(host=args.host, port=args.port))
+    except KeyboardInterrupt:
+        pass

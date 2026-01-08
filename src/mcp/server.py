@@ -15,7 +15,8 @@ _TOOL_HANDLERS: Dict[str, Callable] = {}
 # --- ACTUAL IMPLEMENTATION ---
 
 # We need a centralized list_tools handler since the decorators stack up.
-_TOOLS_METADATA: List[types.Tool] = []
+# Registry for internal tool metadata (stores Tool object + extra flags)
+_REGISTRY: List[Dict[str, Any]] = []
 
 
 def register_tool(
@@ -23,20 +24,28 @@ def register_tool(
     description: str,
     input_schema: Dict[str, Any],
     examples: Optional[List[str]] = None,
+    defer_loading: bool = False,
 ):
     def decorator(func: Callable):
         _TOOL_HANDLERS[name] = func
 
-        # Manually construct the Tool object
-        # We append examples to description to guarantee visibility
-        final_desc = description
+        # Inject examples into input_schema for standard compliance
         if examples:
-            final_desc += "\n\nExamples:\n" + "\n".join([f"- {ex}" for ex in examples])
+            input_schema["examples"] = examples
 
+        # Create Tool object
         tool_obj = types.Tool(
-            name=name, description=final_desc, inputSchema=input_schema
+            name=name, 
+            description=description, 
+            inputSchema=input_schema
         )
-        _TOOLS_METADATA.append(tool_obj)
+        
+        # Register with metadata
+        _REGISTRY.append({
+            "tool": tool_obj,
+            "defer": defer_loading,
+            "examples": examples
+        })
         return func
 
     return decorator
@@ -44,7 +53,11 @@ def register_tool(
 
 @app.list_tools()
 async def list_tools() -> List[types.Tool]:
-    return _TOOLS_METADATA
+    """Returns only non-deferred tools to save context window."""
+    return [
+        entry["tool"] for entry in _REGISTRY 
+        if not entry["defer"]
+    ]
 
 
 @app.call_tool()
@@ -53,7 +66,6 @@ async def call_tool(name: str, arguments: Any) -> List[types.TextContent]:
     if not handler:
         raise ValueError(f"Tool {name} not found")
 
-    # Execute (arguments is a dict)
     try:
         result = handler(**arguments)
         return [types.TextContent(type="text", text=str(result))]
@@ -73,7 +85,7 @@ from src.tools.database import (
 
 @register_tool(
     name="query_sql",
-    description="Executes a read-only SQL query against the database.",
+    description="Executes a read-only SQL query against the database. Pay attention to data types: quote TEXT values (e.g. '2024') as seen in the schema.",
     input_schema={
         "type": "object",
         "properties": {
@@ -83,8 +95,9 @@ from src.tools.database import (
     },
     examples=[
         "SELECT * FROM licitacoes WHERE valor_estimado > 10000 LIMIT 5",
-        "SELECT sum(valor_pago) FROM despesas WHERE mes_referencia = '202401' AND codigo_funcao = '12'",  # noqa: E501
+        "SELECT sum(valor_pago) FROM despesas WHERE mes_referencia = '202401' AND codigo_funcao = '12'",
     ],
+    defer_loading=True  # Deferred to save context
 )
 def query_sql(sql_query: str) -> str:
     return tool_query_sql(sql_query)
@@ -92,12 +105,13 @@ def query_sql(sql_query: str) -> str:
 
 @register_tool(
     name="describe_table",
-    description="Returns the schema for a specific table.",
+    description="Returns the DDL schema for a specific table. IMPORTANT: Read the DDL comments to find numeric codes for categories (e.g. 10: Saúde).",
     input_schema={
         "type": "object",
         "properties": {"table_name": {"type": "string"}},
         "required": ["table_name"],
     },
+    defer_loading=True
 )
 def describe_table(table_name: str) -> str:
     return tool_describe_table(table_name)
@@ -105,13 +119,18 @@ def describe_table(table_name: str) -> str:
 
 @register_tool(
     name="search_definitions",
-    description="Searches table names and schema definitions (DDL) for a given keyword.",  # noqa: E501
+    description=(
+        "Searches table names and schema definitions (DDL) for a given keyword. "
+        "CRITICAL: The DDL contains domain mappings in comments (e.g., '-- 10: Saúde', '-- 12: Educação'). "
+        "You MUST read these comments to translate names like 'Saúde' into numeric codes (e.g. '10') for querying."
+    ),
     input_schema={
         "type": "object",
         "properties": {"query": {"type": "string"}},
         "required": ["query"],
     },
     examples=["educacao", "saude", "pagamento"],
+    defer_loading=False  # Critical discovery tool
 )
 def search_definitions(query: str) -> str:
     return tool_search_definitions(query)
@@ -119,7 +138,7 @@ def search_definitions(query: str) -> str:
 
 @register_tool(
     name="search_tools",
-    description="Searches for available tools to use. The agent starts with limited tools.",  # noqa: E501
+    description="Searches for available capabilities/tools. Use this to find deferred tools.",
     input_schema={
         "type": "object",
         "properties": {
@@ -130,14 +149,17 @@ def search_definitions(query: str) -> str:
         },
         "required": ["query"],
     },
+    defer_loading=False  # Critical discovery tool
 )
 def search_tools(query: str) -> str:
     query = query.lower()
-    matches = [
-        f"Tool: {t.name}\nDescription: {t.description}"
-        for t in _TOOLS_METADATA
-        if query in t.name.lower() or query in (t.description or "").lower()
-    ]
+    matches = []
+    
+    for entry in _REGISTRY:
+        t = entry["tool"]
+        if query in t.name.lower() or query in (t.description or "").lower():
+            status = "(Deferred)" if entry["defer"] else "(Active)"
+            matches.append(f"Tool: {t.name} {status}\nDescription: {t.description}")
 
     if not matches:
         return "No tools found matching your query."
@@ -151,6 +173,7 @@ def search_tools(query: str) -> str:
         "type": "object",
         "properties": {},
     },
+    defer_loading=True
 )
 def list_tables() -> str:
     return tool_list_tables()

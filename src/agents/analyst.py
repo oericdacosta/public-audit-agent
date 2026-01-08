@@ -41,18 +41,24 @@ def _load_static_prompt(filename: str) -> str:
         return f.read()
 
 
-def _generate_code_logic(user_question: str) -> str:
+def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) -> str:
     """Core logic to generate code using LLM."""
     settings = get_settings()
     model_name = settings["agent"]["analyst_model"]
     llm = ChatOpenAI(model=model_name, temperature=0)
 
     system_instructions = _build_prompt()
+    
+    # Inject the SQL from Fiscal Agent if available
+    input_text = f"User Question: {user_question}"
+    if sql_query:
+        input_text += f"\n\nPre-Generated, Validated SQL by Fiscal Agent (USE THIS):\n```sql\n{sql_query}\n```\nMake sure to use `query_sql(sql_query)` with this exact query."
+
     prompt = ChatPromptTemplate.from_messages(
         [("system", system_instructions), ("user", "{input}")]
     )
     chain = prompt | llm
-    response = chain.invoke({"input": user_question})
+    response = chain.invoke({"input": input_text})
 
     return clean_markdown_code(response.content)
 
@@ -84,7 +90,9 @@ def generate(state: AgentState):
 
     # Use the pure logic function, avoiding class instantiation loop
     last_message = messages[-1].content
-    code = _generate_code_logic(last_message)
+    sql_query = state.get("sql_query")
+    
+    code = _generate_code_logic(last_message, sql_query)
 
     return {
         "code": code,

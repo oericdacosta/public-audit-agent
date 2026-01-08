@@ -1,7 +1,6 @@
-import operator
 from typing import Annotated, List, Optional, TypedDict
-
 from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 
 
 class AgentState(TypedDict):
@@ -10,7 +9,7 @@ class AgentState(TypedDict):
     Acts as the contract between nodes.
     """
 
-    messages: Annotated[List[BaseMessage], operator.add]
+    messages: Annotated[List[BaseMessage], add_messages]
     code: str
     output: str
     error: Optional[str]

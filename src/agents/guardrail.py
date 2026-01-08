@@ -1,8 +1,10 @@
+
 import os
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from src.schemas.state import AgentState
+from src.utils.logger import observe_node
 
 def _load_static_prompt(filename: str) -> str:
     # Assumes file is in src/agents/../prompts
@@ -12,8 +14,8 @@ def _load_static_prompt(filename: str) -> str:
     with open(path, "r") as f:
         return f.read()
 
+@observe_node(event_type="GUARDRAIL")
 def guardrail_input(state: AgentState):
-    print("--- NODE: GUARDRAIL INPUT ---")
     messages = state["messages"]
     
     # Find the last user message
@@ -37,8 +39,6 @@ def guardrail_input(state: AgentState):
     response = chain.invoke({"input": user_input})
     verdict = response.content.strip().upper()
     
-    print(f"Guardrail Verdict: {verdict}")
-    
     if "UNSAFE" in verdict:
         return {
             "guardrail_verdict": "UNSAFE",
@@ -47,9 +47,8 @@ def guardrail_input(state: AgentState):
     
     return {"guardrail_verdict": "SAFE"}
 
-
+@observe_node(event_type="GUARDRAIL")
 def guardrail_output(state: AgentState):
-    print("--- NODE: GUARDRAIL OUTPUT ---")
     output = state.get("output", "No output.")
     
     # Load safety prompt
@@ -66,7 +65,4 @@ def guardrail_output(state: AgentState):
     response = chain.invoke({"input": output})
     sanitized_output = response.content.strip()
     
-    if sanitized_output != output:
-        print("GUARDAIL OUTPUT: Content sanitized.")
-
     return {"output": sanitized_output}

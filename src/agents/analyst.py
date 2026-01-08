@@ -88,7 +88,7 @@ def generate(state: AgentState):
 
     return {
         "code": code,
-        "iterations": state["iterations"] + 1,
+        "iterations": state.get("iterations", 0) + 1,
         "error": None,
         "evaluation": None,
     }
@@ -123,6 +123,7 @@ def critique(state: AgentState):
 def execute(state: AgentState):
     print("--- NODE: EXECUTE ---")
     code = state["code"]
+    print(f"EXECUTING CODE:\n{code}\n----------------")
     sandbox = DockerSandbox()
     result = sandbox.execute(code)
 

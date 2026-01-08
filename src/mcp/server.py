@@ -4,7 +4,6 @@ from typing import Any, Callable, Dict, List, Optional
 import mcp.types as types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from src.etl.database import DatabaseManager as Database
 
 # Initialize low-level server
 app = Server("civic-audit-mcp")
@@ -64,7 +63,12 @@ async def call_tool(name: str, arguments: Any) -> List[types.TextContent]:
 
 # --- TOOL DEFINITIONS ---
 
-db = Database()
+from src.tools.database import (
+    describe_table as tool_describe_table,
+    list_tables as tool_list_tables,
+    query_sql as tool_query_sql,
+    search_definitions as tool_search_definitions,
+)
 
 
 @register_tool(
@@ -83,13 +87,7 @@ db = Database()
     ],
 )
 def query_sql(sql_query: str) -> str:
-    if not sql_query.strip().upper().startswith("SELECT"):
-        return "Error: Only SELECT queries are allowed."
-    try:
-        results = db.execute_query(sql_query)
-        return str(results)
-    except Exception as e:
-        return f"Error executing query: {str(e)}"
+    return tool_query_sql(sql_query)
 
 
 @register_tool(
@@ -102,10 +100,7 @@ def query_sql(sql_query: str) -> str:
     },
 )
 def describe_table(table_name: str) -> str:
-    schema = db.get_start_schema(limit_tables=[table_name])
-    if table_name in schema:
-        return schema[table_name]
-    return f"Table '{table_name}' not found."
+    return tool_describe_table(table_name)
 
 
 @register_tool(
@@ -119,14 +114,7 @@ def describe_table(table_name: str) -> str:
     examples=["educacao", "saude", "pagamento"],
 )
 def search_definitions(query: str) -> str:
-    results = db.search_schema(query)
-    if not results:
-        return "No definitions found matching your query."
-
-    output = []
-    for table, ddl in results.items():
-        output.append(f"Table: {table}\nDefinition: {ddl}")
-    return "\n".join(output)
+    return tool_search_definitions(query)
 
 
 @register_tool(
@@ -165,8 +153,7 @@ def search_tools(query: str) -> str:
     },
 )
 def list_tables() -> str:
-    tables = db.get_all_tables()
-    return str(tables)
+    return tool_list_tables()
 
 
 def main():

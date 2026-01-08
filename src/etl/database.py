@@ -71,7 +71,19 @@ class DatabaseManager:
                 codigo_orgao TEXT, -- org_code
                 codigo_unidade_orcamentaria TEXT, -- budget_unit_code
                 codigo_funcao TEXT, -- Functional classification
-                -- (e.g., 12=Education/educacao, 10=Health/saude)
+                -- MAPPING:
+                -- 01: Legislativa
+                -- 04: Administração
+                -- 06: Segurança Pública
+                -- 08: Assistência Social
+                -- 10: Saúde
+                -- 12: Educação
+                -- 13: Cultura
+                -- 15: Urbanismo
+                -- 18: Gestão Ambiental
+                -- 26: Transporte
+                -- 27: Desporto e Lazer
+                -- 28: Encargos Especiais
                 codigo_subfuncao TEXT, -- Subfunction (more specific area)
                 codigo_programa TEXT, -- program_code
                 codigo_elemento_despesa TEXT, -- expense_element_code
@@ -156,15 +168,32 @@ class DatabaseManager:
         return schema
 
     def search_schema(self, keyword: str) -> dict[str, str]:
+        import unicodedata
+
+        def normalize_text(text: str) -> str:
+            if not text:
+                return ""
+            return "".join(
+                c for c in unicodedata.normalize("NFD", text)
+                if unicodedata.category(c) != "Mn"
+            ).lower()
+
         conn = self.get_connection()
         cursor = conn.cursor()
-        # Search table names and sql
-        param = f"%{keyword}%"
-        cursor.execute(
-            "SELECT name, sql FROM sqlite_master WHERE type='table' "
-            "AND (lower(name) LIKE lower(?) OR lower(sql) LIKE lower(?))",
-            (param, param),
-        )
-        results = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        # Fetch ALL tables and definitions
+        cursor.execute("SELECT name, sql FROM sqlite_master WHERE type='table'")
+        all_tables = cursor.fetchall()
         conn.close()
+
+        results = {}
+        keyword_norm = normalize_text(keyword)
+
+        for name, sql in all_tables:
+            name_norm = normalize_text(name)
+            sql_norm = normalize_text(sql)
+            
+            if (keyword_norm in name_norm) or (keyword_norm in sql_norm):
+                results[name] = sql
+                
         return results

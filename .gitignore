@@ -25,3 +25,6 @@ data/*.db
 logs/*
 !logs/.gitkeep
 *.log
+
+#testes
+tests/*

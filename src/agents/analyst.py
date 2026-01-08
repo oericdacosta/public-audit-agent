@@ -2,7 +2,7 @@ import os
 from typing import Optional
 import uuid
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
@@ -31,6 +31,14 @@ def _build_prompt():
             parts.append(f.read())
 
     return "\n\n".join(parts)
+
+
+def _load_static_prompt(filename: str) -> str:
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "prompts", filename
+    )
+    with open(path, "r") as f:
+        return f.read()
 
 
 def _generate_code_logic(user_question: str) -> str:
@@ -108,6 +116,50 @@ def critique(state: AgentState):
     return {"evaluation": evaluation}
 
 
+def guardrail_input(state: AgentState):
+    print("--- NODE: GUARDRAIL ---")
+    messages = state["messages"]
+    
+    # Find the last user message
+    user_input = "Unknown input"
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage):
+            user_input = m.content
+            break
+            
+    # Load safety prompt
+    safety_prompt = _load_static_prompt("guardrail_input.md")
+    
+    # Use a fast model for the check
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    
+    chain = ChatPromptTemplate.from_messages([
+        ("system", safety_prompt),
+        ("human", "{input}")
+    ]) | llm
+    
+    response = chain.invoke({"input": user_input})
+    verdict = response.content.strip().upper()
+    
+    print(f"Guardrail Verdict: {verdict}")
+    
+    if "UNSAFE" in verdict:
+        return {
+            "guardrail_verdict": "UNSAFE",
+            "output": "🚫 **Process blocked by Security Policy.**\nYour request was flagged as unsafe or irrelevant to the public audit context."
+        }
+    
+    return {"guardrail_verdict": "SAFE"}
+
+
+def check_guardrail(state: AgentState):
+    verdict = state.get("guardrail_verdict")
+    if verdict == "UNSAFE":
+        print("--- DECISION: BLOCKED BY GUARDRAIL ---")
+        return END
+    return "generate"
+
+
 def execute(state: AgentState):
     print("--- NODE: EXECUTE ---")
     code = state["code"]
@@ -174,11 +226,21 @@ class AnalystAgent:
     def _build_graph(self):
         workflow = StateGraph(AgentState)
 
+        workflow.add_node("guardrail_input", guardrail_input)
         workflow.add_node("generate", generate)
         workflow.add_node("critic", critique)
         workflow.add_node("execute", execute)
 
-        workflow.set_entry_point("generate")
+        workflow.set_entry_point("guardrail_input")
+        
+        workflow.add_conditional_edges(
+            "guardrail_input",
+            check_guardrail,
+            {
+                "generate": "generate",
+                END: END
+            }
+        )
 
         workflow.add_edge("generate", "critic")
 

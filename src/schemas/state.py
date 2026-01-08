@@ -10,6 +10,7 @@ class AgentState(TypedDict):
     """
 
     messages: Annotated[List[BaseMessage], add_messages]
+    guardrail_verdict: Optional[str]
     code: str
     output: str
     error: Optional[str]

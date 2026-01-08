@@ -85,7 +85,7 @@ class AuditGraph:
 
         config = {
             "configurable": {"thread_id": thread_id},
-            "recursion_limit": 10
+            "recursion_limit": 25
         }
 
         # For a new turn, we only need to provide the new message

@@ -11,8 +11,10 @@ def _load_static_prompt(filename: str) -> str:
     with open(path, "r") as f:
         return f.read()
 
+from src.utils.logger import observe_node
+
+@observe_node(event_type="THOUGHT")
 def planner(state: AgentState):
-    print("--- NODE: PLANNER ---")
     messages = state["messages"]
     
     # Find the last user message
@@ -37,8 +39,6 @@ def planner(state: AgentState):
     
     response = chain.invoke({"input": user_input})
     plan_text = response.content.strip()
-    
-    print(f"Generated Plan:\n{plan_text}")
     
     # Append the plan to the message history so the Analyst sees it
     plan_message = HumanMessage(content=f"Here is the execution plan you must follow:\n{plan_text}")

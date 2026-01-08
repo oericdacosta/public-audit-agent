@@ -14,7 +14,86 @@ from src.execution.sandbox import DockerSandbox
 from src.schemas.state import AgentState
 from src.utils.parsing import clean_markdown_code
 
-# --- HELPER FUNCTIONS ---
+from src.utils.logger import observe_node
+
+# --- NODE FUNCTIONS ---
+
+
+@observe_node(event_type="THOUGHT")
+def generate(state: AgentState):
+    messages = state["messages"]
+    error = state.get("error")
+    evaluation = state.get("evaluation")
+
+    if error:
+        messages.append(
+            HumanMessage(
+                content=f"The previous code failed with this error:\n{error}\n"
+                "Please fix the code and try again."
+            )
+        )
+
+    if evaluation and "REJECT" in evaluation:
+        messages.append(
+            HumanMessage(
+                content=f"The code was rejected by the reviewer:\n{evaluation}\n"
+                "Please fix the logic errors."
+            )
+        )
+
+    # Use the pure logic function, avoiding class instantiation loop
+    last_message = messages[-1].content
+    sql_query = state.get("sql_query")
+    
+    code = _generate_code_logic(last_message, sql_query)
+
+    return {
+        "code": code,
+        "iterations": state.get("iterations", 0) + 1,
+        "error": None,
+        "evaluation": None,
+    }
+
+
+@observe_node(event_type="THOUGHT")
+def critique(state: AgentState):
+    code = state["code"]
+    messages = state["messages"]
+    
+    # Find the last user message to evaluate against
+    user_question = "Unknown question"
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage):
+            user_question = m.content
+            break
+
+    # Internal instantiation is fine here
+    from src.agents.critic import CriticAgent
+
+    critic = CriticAgent()
+    evaluation = critic.review_code(user_question, code)
+
+    return {"evaluation": evaluation}
+
+
+# --- NOTE: The AnalystAgent class has been refactored into src/graph/workflow.py (AuditGraph).
+# This file now only contains the node functions used by the graph.
+
+
+@observe_node(event_type="TOOL_CALL")
+def execute(state: AgentState):
+    code = state["code"]
+    sandbox = DockerSandbox()
+    result = sandbox.execute(code)
+
+    if (
+        result.startswith("Execution Error")
+        or result.startswith("System Error")
+        or "Traceback" in result
+    ):
+        return {"output": result, "error": result}
+    else:
+        return {"output": result, "error": None}
 
 
 def _build_prompt():

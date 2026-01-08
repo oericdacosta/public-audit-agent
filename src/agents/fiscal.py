@@ -47,13 +47,17 @@ If the query is VALID, output: VALID
 If the query is INVALID, output the CORRECTED query (JUST the SQL).
 """
 
+from src.utils.logger import observe_node
+
 # --- NODES ---
 
+@observe_node(event_type="TOOL_CALL")
 def list_tables_node(state: AgentState):
     print("--- FISCAL: LIST TABLES ---")
     tables = list_tables()
     return {"messages": [HumanMessage(content=f"Available tables: {tables}")]}
 
+@observe_node(event_type="TOOL_CALL")
 def get_schema_node(state: AgentState):
     print("--- FISCAL: GET SCHEMA ---")
     messages = state["messages"]
@@ -73,6 +77,7 @@ def get_schema_node(state: AgentState):
     schema_text = "\n\n".join(schemas)
     return {"messages": [HumanMessage(content=f"Schema Context:\n{schema_text}")]}
 
+@observe_node(event_type="THOUGHT")
 def generate_query_node(state: AgentState):
     print("--- FISCAL: GENERATE SQL ---")
     messages = state["messages"]
@@ -107,6 +112,7 @@ def generate_query_node(state: AgentState):
     
     return {"sql_query": sql_query}
 
+@observe_node(event_type="THOUGHT")
 def check_query_node(state: AgentState):
     print("--- FISCAL: CHECK SQL ---")
     sql_query = state["sql_query"]

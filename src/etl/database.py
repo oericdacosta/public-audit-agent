@@ -125,9 +125,20 @@ class DatabaseManager:
             )
             /* Metadata: Revenue and Collection table (receita). */
         """)
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_rec_municipio ON receitas(municipio_id)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_rec_municipio ON receitas(municipio_id)")
+
+        # Table: Metadata (Idempotency)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS etl_metadata (
+                municipio_id TEXT,
+                year INTEGER,
+                source TEXT,
+                status TEXT, -- 'STARTED', 'COMPLETED', 'FAILED'
+                record_count INTEGER,
+                last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (municipio_id, year, source)
+            )
+        """)
 
         conn.commit()
         conn.close()

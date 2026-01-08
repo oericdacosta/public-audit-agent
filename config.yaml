@@ -14,7 +14,7 @@ tce:
 # Audit Target Scope
 audit:
   city_code: "162" # Sobral
-  year_start: "2024"
+  data_retention_years: 10 # Rolling window (last 10 years)
 
 # AI Agents Configuration
 agent:

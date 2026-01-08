@@ -1,9 +1,12 @@
 import os
+from typing import Optional
+import uuid
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.config import get_settings
 from src.agents.critic import CriticAgent
@@ -87,7 +90,13 @@ def critique(state: AgentState):
     print("--- NODE: CRITIC ---")
     code = state["code"]
     messages = state["messages"]
-    user_question = messages[0].content
+    
+    # Find the last user message to evaluate against
+    user_question = "Unknown question"
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage):
+            user_question = m.content
+            break
 
     # Internal instantiation is fine here
     from src.agents.critic import CriticAgent
@@ -159,6 +168,7 @@ class AnalystAgent:
     """
 
     def __init__(self):
+        self.memory = MemorySaver()
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -185,19 +195,29 @@ class AnalystAgent:
             "execute", check_execution, {"generate": "generate", END: END}
         )
 
-        return workflow.compile()
+        return workflow.compile(checkpointer=self.memory)
 
-    def run(self, user_question: str) -> str:
-        initial_state = {
+    def run(self, user_question: str, thread_id: Optional[str] = None) -> str:
+        
+        # If no thread_id provided, generate a new one to ensure isolation unless specified
+        if not thread_id:
+            thread_id = str(uuid.uuid4())
+
+        config = {
+            "configurable": {"thread_id": thread_id},
+            "recursion_limit": 10
+        }
+
+        # For a new turn, we only need to provide the new message and reset specific trackers
+        # The 'messages' reducer will handle appending
+        inputs = {
             "messages": [HumanMessage(content=user_question)],
             "iterations": 0,
             "error": None,
-            "code": "",
-            "output": "",
-            "evaluation": None,
+            "evaluation": None
         }
 
-        final_state = self.graph.invoke(initial_state, config={"recursion_limit": 10})
+        final_state = self.graph.invoke(inputs, config=config)
         return final_state.get("output", "No output generated.")
 
     # Keep a helper for simple generation if needed

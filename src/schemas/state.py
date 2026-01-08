@@ -11,6 +11,7 @@ class AgentState(TypedDict):
 
     messages: Annotated[List[BaseMessage], add_messages]
     guardrail_verdict: Optional[str]
+    plan: Optional[str]  # Decomposition of the user query
     code: str
     output: str
     error: Optional[str]

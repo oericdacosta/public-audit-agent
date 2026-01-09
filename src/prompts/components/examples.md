@@ -1,44 +1,70 @@
-EXAMPLE OF CORRECT RESPONSE:
+# SECTION: DEFENSIVE CODING EXAMPLES
+
+**PATTERN 1: ROBUST JSON PARSING (handling dirty data)**
+*Problem:* `query_sql` may return JSON strings or Dictionaries depending on the driver state.
+*Bad:*
+
+```python
+data = query_sql("SELECT * FROM despesas")
+for row in data:
+    val = row['valor'] # Crash if row is a string!
+```
+
+*Good (Defensive):*
 
 ```python
 import json
-
-# Discover tables
-tables = list_tables()
-print(f"Tables: {{tables}}")
-
-# Query data
-data = query_sql("SELECT * FROM despesas WHERE valor_liquidado > 1000 LIMIT 10")
-
-total = 0
-for d in data:
-    if isinstance(d, str):
+data = query_sql("SELECT * FROM despesas")
+for row in data:
+    # 1. Self-Correction for Data Types
+    if isinstance(row, str):
         try:
-            d = json.loads(d)
+            row = json.loads(row)
         except:
-            pass
-    
-    if isinstance(d, dict):
-        val = d.get('valor_pago', 0)
-        if val:
-            total += float(val)
-
-print(f"Total spent: {{total}}")
+            continue # Skip corrupted rows
+            
+    # 2. Key Verification
+    if isinstance(row, dict):
+        val = row.get('valor', 0)
+        print(val)
 ```
 
-EXAMPLE OF METADATA QUESTION:
-User: "Qual o nome da tabela de despesas?"
+**PATTERN 2: SQLITE QUOTING (The "Text-Number" Trap)**
+*Problem:* In this legacy database, years and codes are TEXT, not INTEGERS.
+*Bad:* `WHERE exercicio_orcamento = 2024` (Returns 0 results)
+*Good:* `WHERE exercicio_orcamento = '2024'` (Quotes are mandatory)
+
+**PATTERN 3: PUSH-DOWN COMPUTATION**
+*Problem:* Fetching all rows to sum in Python is slow and OOM-prone.
+*Bad:*
 
 ```python
-tables = list_tables()
-found = None
-for t in tables:
-    if "despesa" in t.lower():
-        found = t
-        break
+rows = query_sql("SELECT * FROM despesas") # 1M rows load
+total = sum(r['val'] for r in rows)
+```
 
-if found:
-    print(f"The table name is: {{found}}")
-else:
-    print("Table not found.")
+*Good:*
+
+```python
+# Push aggregation to the DB engine
+rows = query_sql("SELECT SUM(valor) as total FROM despesas")
+total_val = rows[0]['total']
+# NOTE: double braces needed for LangChain prompt escaping
+print(f"Total: {{total_val}}")
+```
+
+**PATTERN 4: DISCOVERY BEFORE QUERY**
+*Problem:* Guessing table names.
+*Bad:* `query_sql("SELECT * FROM expenses")` (Table 'expenses' might not exist)
+*Good:*
+
+```python
+# 1. Search for potential tables
+tables = search_definitions("despesa")
+print(f"Found candidates: {{tables}}")
+
+# 2. Inspect schema to find correct columns
+schema = describe_table("tb_despesas_2024")
+print(schema) 
+# Now I know columns are 'vlr_liquidado' not 'value'
 ```

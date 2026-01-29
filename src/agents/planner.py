@@ -1,20 +1,34 @@
-import os
+"""
+Planner Agent Node Function.
+
+Responsible for decomposing user queries into execution plans.
+"""
+
+import logging
+from typing import Any
+
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+
 from src.schemas.state import AgentState
-
-def _load_static_prompt(filename: str) -> str:
-    path = os.path.join(
-        os.path.dirname(__file__), "..", "prompts", filename
-    )
-    with open(path, "r") as f:
-        return f.read()
-
 from src.utils.logger import observe_node
+from src.utils.prompts import load_prompt
+
+logger = logging.getLogger(__name__)
+
 
 @observe_node(event_type="THOUGHT")
-def planner(state: AgentState):
+def planner(state: AgentState) -> dict[str, Any]:
+    """
+    Create an execution plan based on the user's question.
+    
+    Args:
+        state: Current agent state containing user messages.
+    
+    Returns:
+        Updated state with execution plan and plan message.
+    """
     messages = state["messages"]
     
     # Find the last user message
@@ -24,13 +38,11 @@ def planner(state: AgentState):
             user_input = m.content
             break
             
-    # Load planner prompt
-    planner_prompt = _load_static_prompt("planner.md")
+    # Load planner prompt using shared utility
+    planner_prompt = load_prompt("planner.md")
     
-    # Use a reasoning model (or strong model) for planning
-    # gpt-4o or gpt-4o-mini depending on complexity/cost trade-off. 
-    # Using gpt-4o-mini for speed/efficiency as requested in plan, but could be upgraded.
-    llm = ChatOpenAI(model="gpt-4o", temperature=0) 
+    # Use a reasoning model for planning
+    llm = ChatOpenAI(model="gpt-4o", temperature=0)
     
     chain = ChatPromptTemplate.from_messages([
         ("system", planner_prompt),
@@ -41,7 +53,9 @@ def planner(state: AgentState):
     plan_text = response.content.strip()
     
     # Append the plan to the message history so the Analyst sees it
-    plan_message = HumanMessage(content=f"Here is the execution plan you must follow:\n{plan_text}")
+    plan_message = HumanMessage(
+        content=f"Here is the execution plan you must follow:\n{plan_text}"
+    )
     
     return {
         "plan": plan_text,

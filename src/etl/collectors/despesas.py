@@ -1,5 +1,12 @@
+"""
+Expenses (Despesas) Collector.
+
+Collects public expense data from the TCE API.
+"""
+
 import json
 import logging
+from typing import Any, Iterator
 
 from .base import BaseCollector
 
@@ -7,17 +14,34 @@ logger = logging.getLogger(__name__)
 
 
 class ExpensesCollector(BaseCollector):
-    def run(self, municipio_id, year):
+    """Collector for public expense (despesa) data."""
+
+    def run(self, municipio_id: str, year: int) -> int:
+        """
+        Run the expense collection for a municipality and year.
+        
+        Returns:
+            Total number of records collected.
+        """
         total = 0
         logger.info(">>> Starting Despesas (Financial)")
+        
         for batch, month_ref in self.fetch_by_month(municipio_id, year):
             saved = self.save(batch, municipio_id, year, month_ref)
             total += saved
-            print(f"Despesas: accumulated {total} records...", end="\r")
-        print(f"\nDespesas completed: {total} records.")
+            
+        logger.info("Despesas completed: %d records.", total)
         return total
 
-    def fetch_by_month(self, municipio_id, year):
+    def fetch_by_month(
+        self, municipio_id: str, year: int
+    ) -> Iterator[tuple[list[dict[str, Any]], str]]:
+        """
+        Fetch expense data month by month.
+        
+        Yields:
+            Tuples of (batch_data, month_reference).
+        """
         for month in range(1, 13):
             month_ref = f"{year}{month:02d}"
             params = {
@@ -27,7 +51,7 @@ class ExpensesCollector(BaseCollector):
             }
             url = f"{self.client.SIM_BASE_URL}/balancete_despesa_orcamentaria.json"
 
-            logger.info(f"Fetching Despesas: {month_ref}")
+            logger.info("Fetching Despesas: %s", month_ref)
             data = self.client.fetch_json(url, params)
 
             if data:
@@ -47,42 +71,59 @@ class ExpensesCollector(BaseCollector):
                     elif isinstance(content, dict):
                         yield ([content], month_ref)
 
-    def save(self, batch_data, municipio_id, year, month_ref):
-        conn = self.db_manager.get_connection()
+    def save(
+        self,
+        batch_data: list[dict[str, Any]],
+        municipio_id: str,
+        year: int,
+        month_ref: str
+    ) -> int:
+        """
+        Save expense records to the database.
+        
+        Returns:
+            Number of records saved.
+        """
+        conn = self.db_manager.get_raw_connection()
         cursor = conn.cursor()
         count = 0
-        for i, item in enumerate(batch_data):
-            elem = item.get("codigo_elemento_despesa", "0")
-            val = item.get("valor_pago_no_mes", "0")
-            exp_id = f"{municipio_id}_{month_ref}_{elem}_{val}_{i}"
+        
+        try:
+            for i, item in enumerate(batch_data):
+                elem = item.get("codigo_elemento_despesa", "0")
+                val = item.get("valor_pago_no_mes", "0")
+                exp_id = f"{municipio_id}_{month_ref}_{elem}_{val}_{i}"
 
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO despesas (
-                    id, municipio_id, exercicio_orcamento, mes_referencia,
-                    codigo_orgao, codigo_unidade_orcamentaria, codigo_funcao,
-                    codigo_subfuncao, codigo_programa, codigo_elemento_despesa,
-                    valor_empenhado, valor_liquidado, valor_pago, raw_data
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    exp_id,
-                    municipio_id,
-                    str(year),
-                    month_ref,
-                    item.get("codigo_orgao"),
-                    item.get("codigo_unidade_orcamentaria"),
-                    item.get("codigo_funcao"),
-                    item.get("codigo_subfuncao"),
-                    item.get("codigo_programa"),
-                    item.get("codigo_elemento_despesa"),
-                    item.get("valor_empenhado_no_mes"),
-                    item.get("valor_liquidado_no_mes"),
-                    item.get("valor_pago_no_mes"),
-                    json.dumps(item),
-                ),
-            )
-            count += 1
-        conn.commit()
-        conn.close()
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO despesas (
+                        id, municipio_id, exercicio_orcamento, mes_referencia,
+                        codigo_orgao, codigo_unidade_orcamentaria, codigo_funcao,
+                        codigo_subfuncao, codigo_programa, codigo_elemento_despesa,
+                        valor_empenhado, valor_liquidado, valor_pago, raw_data
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        exp_id,
+                        municipio_id,
+                        str(year),
+                        month_ref,
+                        item.get("codigo_orgao"),
+                        item.get("codigo_unidade_orcamentaria"),
+                        item.get("codigo_funcao"),
+                        item.get("codigo_subfuncao"),
+                        item.get("codigo_programa"),
+                        item.get("codigo_elemento_despesa"),
+                        item.get("valor_empenhado_no_mes"),
+                        item.get("valor_liquidado_no_mes"),
+                        item.get("valor_pago_no_mes"),
+                        json.dumps(item),
+                    ),
+                )
+                count += 1
+            
+            conn.commit()
+        finally:
+            conn.close()
+        
         return count

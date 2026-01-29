@@ -5,9 +5,6 @@ Tests the security validations, query sanitization,
 and database tool functions.
 """
 
-import pytest
-from unittest.mock import patch, Mock
-
 
 class TestSanitizeQuery:
     """Test suite for _sanitize_query function."""

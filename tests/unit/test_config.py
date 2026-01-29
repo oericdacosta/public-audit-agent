@@ -4,10 +4,6 @@ Tests for configuration module.
 Tests the settings loading and caching behavior.
 """
 
-import pytest
-from unittest.mock import patch, mock_open
-import yaml
-
 
 class TestGetSettings:
     """Test suite for get_settings function."""

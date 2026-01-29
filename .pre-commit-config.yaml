@@ -3,7 +3,7 @@ repos:
   # Ruff - Linting e Formatting ultra-rápido
   # ─────────────────────────────────────────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.0
+    rev: v0.14.0
     hooks:
       - id: ruff
         args: [--fix]

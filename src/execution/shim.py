@@ -13,7 +13,12 @@ from typing import Any, Optional, Union
 
 # Configuration (Injected or Default)
 MCP_HOST = os.environ.get("MCP_HOST", "host.docker.internal")
-MCP_PORT = int(os.environ.get("MCP_PORT", "8000"))
+
+# Safe parsing of MCP_PORT with fallback
+try:
+    MCP_PORT = int(os.environ.get("MCP_PORT", "8000"))
+except ValueError:
+    MCP_PORT = 8000
 
 logger = logging.getLogger(__name__)
 

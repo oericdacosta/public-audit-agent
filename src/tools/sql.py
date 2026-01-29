@@ -7,9 +7,13 @@ Public interface for database operations exposed to agents and MCP server.
 import logging
 import re
 import signal
-from typing import Any, Tuple, Union
+from typing import TYPE_CHECKING, Any, Tuple, Union, cast
 
+from src.config import get_settings
 from src.exceptions import DatabaseError, ValidationError
+
+if TYPE_CHECKING:
+    from src.etl.db_manager import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +22,8 @@ _db = None
 
 # Configuration constants
 DEFAULT_LIMIT = 1000
-QUERY_TIMEOUT_SECONDS = 30
+# Read with fallback, though config usually defaults to 30
+QUERY_TIMEOUT_SECONDS = get_settings().get("database", {}).get("query_timeout", 30)
 
 
 class QueryTimeout(Exception):
@@ -26,13 +31,18 @@ class QueryTimeout(Exception):
     pass
 
 
-def _get_db():
-    """Lazy-load the database manager to avoid import-time execution."""
+def _get_db() -> "DatabaseManager":
+    """
+    Lazy-load the database manager to avoid import-time execution.
+    
+    Using string forward reference for return type to avoid circular imports
+    at runtime while satisfying type checkers.
+    """
     global _db
     if _db is None:
         from src.etl.db_manager import DatabaseManager
         _db = DatabaseManager()
-    return _db
+    return cast("DatabaseManager", _db)
 
 
 def _sanitize_query(sql_query: str) -> str:

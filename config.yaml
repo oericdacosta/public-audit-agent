@@ -20,8 +20,9 @@ audit:
 agent:
   analyst_model: "gpt-4o"
   critic_model: "gpt-4o-mini"
+  fiscal_model: "gpt-4o"  # SQL specialist model
   max_retries: 3
-  recursion_limit: 10
+  recursion_limit: 30  # Max workflow iterations
 
 # Database Configuration
 database:
@@ -29,7 +30,7 @@ database:
 
 # Sandbox Configuration
 sandbox:
-  image: "python:3.11-slim"
+  image: "python:3.12-slim"
   timeout: 30
   memory_limit: "512m"
 

@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
+from src.config import get_settings
 from src.schemas.state import AgentState
 from src.tools.database import describe_table, list_tables
 from src.utils.logger import observe_node
@@ -117,7 +118,9 @@ def generate_query_node(state: AgentState) -> dict[str, str]:
             elif "Available tables:" not in m.content:
                 user_question = m.content
 
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    settings = get_settings()
+    model_name = settings["agent"].get("fiscal_model", "gpt-4o")
+    llm = ChatOpenAI(model=model_name, temperature=0)
     prompt = ChatPromptTemplate.from_messages([
         ("system", GENERATE_SQL_PROMPT),
         ("human", "{question}")
@@ -152,7 +155,9 @@ def check_query_node(state: AgentState) -> dict[str, str]:
         if isinstance(m, HumanMessage) and "Schema Context:" in m.content:
             schema_context = m.content
             
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    settings = get_settings()
+    model_name = settings["agent"].get("fiscal_model", "gpt-4o")
+    llm = ChatOpenAI(model=model_name, temperature=0)
     prompt = ChatPromptTemplate.from_messages([
         ("system", CHECK_SQL_PROMPT),
     ])

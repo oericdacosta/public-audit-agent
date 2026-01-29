@@ -6,6 +6,7 @@ Executes Python code in isolated Docker containers for safety.
 
 import io
 import logging
+import os
 import tarfile
 from pathlib import Path
 from typing import Optional
@@ -66,7 +67,6 @@ class DockerSandbox:
             full_code = shim_code + "\n\n" + code
 
             # Get network configuration from environment
-            import os
             network_name = os.environ.get("DOCKER_NETWORK_NAME")
             mcp_host = os.environ.get("MCP_HOST", "host.docker.internal")
             mcp_port = os.environ.get("MCP_PORT", "8000")

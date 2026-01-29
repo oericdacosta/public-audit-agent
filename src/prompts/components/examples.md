@@ -68,3 +68,34 @@ schema = describe_table("tb_despesas_2024")
 print(schema) 
 # Now I know columns are 'vlr_liquidado' not 'value'
 ```
+
+**PATTERN 5: SAFE NULL AGGREGATION**
+*Problem:* SUM() with NULL values returns NULL, not 0.
+*Bad:*
+
+```python
+rows = query_sql("SELECT SUM(valor_pago) as total FROM despesas")
+total = rows[0]['total']  # Pode ser None!
+```
+
+*Good:*
+
+```python
+rows = query_sql("SELECT COALESCE(SUM(valor_pago), 0) as total FROM despesas")
+total = rows[0]['total']  # Sempre retorna número
+```
+
+**PATTERN 6: SAFE DATE RANGE**
+*Problem:* BETWEEN is inclusive on both ends, which can cause off-by-one errors.
+*Bad:* `WHERE data BETWEEN '2024-01-01' AND '2024-01-31'` (includes 31/01 at 00:00:00)
+*Good:*
+
+```python
+# Use explicit bounds for date ranges
+rows = query_sql("""
+    SELECT * FROM licitacoes 
+    WHERE data_realizacao_licitacao >= '2024-01-01' 
+      AND data_realizacao_licitacao < '2024-02-01'
+    LIMIT 10
+""")
+```

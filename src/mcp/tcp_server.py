@@ -11,7 +11,7 @@ import logging
 import traceback
 from typing import Any, Callable
 
-from src.tools.database import describe_table, list_tables, query_sql, search_definitions
+from src.tools.sql import describe_table, list_tables, query_sql, search_definitions
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ from langchain_openai import ChatOpenAI
 
 from src.config import get_settings
 from src.schemas.state import AgentState
-from src.tools.database import describe_table, list_tables
+from src.tools.sql import describe_table, list_tables
 from src.utils.logger import observe_node
 
 logger = logging.getLogger(__name__)
@@ -97,13 +97,17 @@ def get_schema_node(state: AgentState) -> dict[str, Any]:
 
 
 @observe_node(event_type="THOUGHT")
-def generate_query_node(state: AgentState) -> dict[str, str]:
+def generate_query_node(state: AgentState) -> dict[str, Any]:
     """
     Generate SQL query based on user question and schema context.
     
+    Validates generated SQL for safety before returning.
+    
     Returns:
-        Updated state with generated SQL query.
+        Updated state with generated SQL query or error if unsafe.
     """
+    from src.tools.sql import validate_sql_safety
+    
     logger.debug("FISCAL: GENERATE SQL")
     messages = state["messages"]
     
@@ -134,6 +138,12 @@ def generate_query_node(state: AgentState) -> dict[str, str]:
     
     sql_query = response.content.replace("```sql", "").replace("```", "").strip()
     logger.debug("Generated SQL: %s", sql_query)
+    
+    # P7: Validate LLM-generated SQL for safety
+    is_safe, error = validate_sql_safety(sql_query)
+    if not is_safe:
+        logger.warning("LLM generated unsafe SQL: %s - %s", sql_query[:100], error)
+        return {"sql_query": None, "error": f"Generated SQL is unsafe: {error}"}
     
     return {"sql_query": sql_query}
 

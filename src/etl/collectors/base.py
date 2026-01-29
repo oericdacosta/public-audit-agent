@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.etl.client import TCEClient
-    from src.etl.database import DatabaseManager
+    from src.etl.db_manager import DatabaseManager
 
 
 class BaseCollector(ABC):

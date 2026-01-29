@@ -103,7 +103,7 @@ async def call_tool(name: str, arguments: Any) -> list[types.TextContent]:
 
 def _get_database_tools() -> tuple:
     """Lazy load database tools."""
-    from src.tools.database import (
+    from src.tools.sql import (
         describe_table as tool_describe_table,
         list_tables as tool_list_tables,
         query_sql as tool_query_sql,

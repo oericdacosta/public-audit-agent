@@ -103,6 +103,20 @@ class DatabaseManager:
                 "CREATE INDEX IF NOT EXISTS idx_lic_objeto "
                 "ON licitacoes(objeto_licitacao)"
             )
+            # Additional indexes for frequently filtered columns
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lic_modalidade "
+                "ON licitacoes(modalidade_licitacao)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lic_situacao "
+                "ON licitacoes(situacao_licitacao)"
+            )
+            # Composite index for multi-column queries
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_lic_mun_exerc "
+                "ON licitacoes(municipio_id, exercicio_orcamento)"
+            )
 
             # Table: Despesas (Expenses)
             cursor.execute("""
@@ -146,6 +160,20 @@ class DatabaseManager:
                 "CREATE INDEX IF NOT EXISTS idx_desp_data "
                 "ON despesas(mes_referencia)"
             )
+            # Additional indexes for frequently filtered columns
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_desp_funcao "
+                "ON despesas(codigo_funcao)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_desp_exercicio "
+                "ON despesas(exercicio_orcamento)"
+            )
+            # Composite index for multi-column queries
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_desp_mun_exerc "
+                "ON despesas(municipio_id, exercicio_orcamento)"
+            )
 
             # Table: Receitas (Revenue)
             cursor.execute("""
@@ -168,6 +196,20 @@ class DatabaseManager:
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_rec_municipio "
                 "ON receitas(municipio_id)"
+            )
+            # dditional indexes for frequently filtered columns
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_rec_exercicio "
+                "ON receitas(exercicio_orcamento)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_rec_mes "
+                "ON receitas(mes_referencia)"
+            )
+            # Composite index for multi-column queries
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_rec_mun_exerc "
+                "ON receitas(municipio_id, exercicio_orcamento)"
             )
 
             # Table: Metadata (Idempotency)

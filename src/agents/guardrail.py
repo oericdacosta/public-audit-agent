@@ -9,9 +9,9 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
 from src.schemas.state import AgentState
+from src.utils.llm import get_llm
 from src.utils.logger import observe_node
 from src.utils.prompts import load_prompt
 
@@ -41,8 +41,8 @@ def guardrail_input(state: AgentState) -> dict[str, Any]:
     # Load safety prompt using shared utility
     safety_prompt = load_prompt("guardrail_input.md")
     
-    # Use GPT-4o-mini for cost-effective checks
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    # Use config-driven model for cost-effective checks
+    llm = get_llm("guardrail_model")
     
     chain = ChatPromptTemplate.from_messages([
         ("system", safety_prompt),
@@ -82,8 +82,8 @@ def guardrail_output(state: AgentState) -> dict[str, str]:
     # Load safety prompt using shared utility
     safety_prompt = load_prompt("guardrail_output.md")
     
-    # Use GPT-4o-mini for cost-effective checks
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    # Use config-driven model for cost-effective checks
+    llm = get_llm("guardrail_model")
     
     chain = ChatPromptTemplate.from_messages([
         ("system", safety_prompt),

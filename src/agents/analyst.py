@@ -10,12 +10,12 @@ from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 from langgraph.graph import END
 
 from src.config import get_settings
 from src.execution.sandbox import DockerSandbox
 from src.schemas.state import AgentState
+from src.utils.llm import get_llm
 from src.utils.logger import observe_node
 from src.utils.parsing import clean_markdown_code
 from src.utils.prompts import load_prompt_components
@@ -42,9 +42,7 @@ def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) ->
     Returns:
         Generated Python code as a string.
     """
-    settings = get_settings()
-    model_name = settings["agent"]["analyst_model"]
-    llm = ChatOpenAI(model=model_name, temperature=0)
+    llm = get_llm("analyst_model")
 
     system_instructions = _build_prompt()
     
@@ -219,11 +217,14 @@ def check_execution(state: AgentState) -> str:
     Returns:
         Either "generate" to retry or END to finish.
     """
+    settings = get_settings()
+    max_retries = settings.get("agent", {}).get("max_retries", 3)
+    
     error = state.get("error")
-    iterations = state.get("iterations")
+    iterations = state.get("iterations", 0)
 
-    if error and iterations < 3:
-        logger.debug("DECISION: EXEC ERROR -> RETRY (%d/3)", iterations)
+    if error and iterations < max_retries:
+        logger.debug("DECISION: EXEC ERROR -> RETRY (%d/%d)", iterations, max_retries)
         return "generate"
     
     return END

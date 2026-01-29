@@ -9,9 +9,9 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
 from src.schemas.state import AgentState
+from src.utils.llm import get_llm
 from src.utils.logger import observe_node
 from src.utils.prompts import load_prompt
 
@@ -41,8 +41,8 @@ def planner(state: AgentState) -> dict[str, Any]:
     # Load planner prompt using shared utility
     planner_prompt = load_prompt("planner.md")
     
-    # Use a reasoning model for planning
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    # Use config-driven model for planning
+    llm = get_llm("planner_model")
     
     chain = ChatPromptTemplate.from_messages([
         ("system", planner_prompt),

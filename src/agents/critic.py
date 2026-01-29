@@ -8,10 +8,8 @@ import logging
 from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
-from src.config import get_settings
-from src.exceptions import ConfigurationError
+from src.utils.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +26,7 @@ class CriticAgent:
 
     def __init__(self) -> None:
         """Initialize the CriticAgent with configured LLM."""
-        settings = get_settings()
-        try:
-            model_name = settings["agent"]["critic_model"]
-        except KeyError as e:
-            raise ConfigurationError(
-                "Missing configuration key",
-                details="'agent.critic_model' not found in config.yaml"
-            ) from e
-
-        self.llm = ChatOpenAI(model=model_name, temperature=0)
+        self.llm = get_llm("critic_model")
         self.prompt = self._build_prompt()
 
     def _build_prompt(self) -> ChatPromptTemplate:

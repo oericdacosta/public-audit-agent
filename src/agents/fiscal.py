@@ -5,15 +5,14 @@ SQL specialist agent for generating and validating database queries.
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
-from src.config import get_settings
 from src.schemas.state import AgentState
-from src.tools.sql import describe_table, list_tables
+from src.tools.sql import describe_table, list_tables, validate_sql_safety
+from src.utils.llm import get_llm
 from src.utils.logger import observe_node
 
 logger = logging.getLogger(__name__)
@@ -57,6 +56,42 @@ If the query is INVALID, output the CORRECTED query (JUST the SQL).
 """
 
 
+# --- HELPER FUNCTIONS ---
+
+
+def _extract_schema_context(messages: list[BaseMessage]) -> str:
+    """
+    Extract schema context from message history.
+    
+    Args:
+        messages: List of messages to search through.
+    
+    Returns:
+        Schema context string or empty string if not found.
+    """
+    for m in messages:
+        if isinstance(m, HumanMessage) and "Schema Context:" in m.content:
+            return m.content
+    return ""
+
+
+def _extract_user_question(messages: list[BaseMessage]) -> str:
+    """
+    Extract the original user question from message history.
+    
+    Args:
+        messages: List of messages to search through.
+    
+    Returns:
+        User question string or "Unknown" if not found.
+    """
+    for m in messages:
+        if isinstance(m, HumanMessage):
+            if "Schema Context:" not in m.content and "Available tables:" not in m.content:
+                return m.content
+    return "Unknown"
+
+
 # --- NODE FUNCTIONS ---
 
 
@@ -97,7 +132,7 @@ def get_schema_node(state: AgentState) -> dict[str, Any]:
 
 
 @observe_node(event_type="THOUGHT")
-def generate_query_node(state: AgentState) -> dict[str, Any]:
+def generate_query_node(state: AgentState) -> dict[str, Optional[str]]:
     """
     Generate SQL query based on user question and schema context.
     
@@ -106,25 +141,14 @@ def generate_query_node(state: AgentState) -> dict[str, Any]:
     Returns:
         Updated state with generated SQL query or error if unsafe.
     """
-    from src.tools.sql import validate_sql_safety
-    
     logger.debug("FISCAL: GENERATE SQL")
     messages = state["messages"]
     
-    # Extract user question and schema context from history
-    user_question = "Unknown"
-    schema_context = ""
-    
-    for m in messages:
-        if isinstance(m, HumanMessage):
-            if "Schema Context:" in m.content:
-                schema_context = m.content
-            elif "Available tables:" not in m.content:
-                user_question = m.content
+    # Extract context using helper functions
+    user_question = _extract_user_question(messages)
+    schema_context = _extract_schema_context(messages)
 
-    settings = get_settings()
-    model_name = settings["agent"].get("fiscal_model", "gpt-4o")
-    llm = ChatOpenAI(model=model_name, temperature=0)
+    llm = get_llm("fiscal_model")
     prompt = ChatPromptTemplate.from_messages([
         ("system", GENERATE_SQL_PROMPT),
         ("human", "{question}")
@@ -139,7 +163,7 @@ def generate_query_node(state: AgentState) -> dict[str, Any]:
     sql_query = response.content.replace("```sql", "").replace("```", "").strip()
     logger.debug("Generated SQL: %s", sql_query)
     
-    # P7: Validate LLM-generated SQL for safety
+    # Validate LLM-generated SQL for safety
     is_safe, error = validate_sql_safety(sql_query)
     if not is_safe:
         logger.warning("LLM generated unsafe SQL: %s - %s", sql_query[:100], error)
@@ -160,14 +184,9 @@ def check_query_node(state: AgentState) -> dict[str, str]:
     sql_query = state["sql_query"]
     messages = state["messages"]
     
-    schema_context = ""
-    for m in messages:
-        if isinstance(m, HumanMessage) and "Schema Context:" in m.content:
-            schema_context = m.content
+    schema_context = _extract_schema_context(messages)
             
-    settings = get_settings()
-    model_name = settings["agent"].get("fiscal_model", "gpt-4o")
-    llm = ChatOpenAI(model=model_name, temperature=0)
+    llm = get_llm("fiscal_model")
     prompt = ChatPromptTemplate.from_messages([
         ("system", CHECK_SQL_PROMPT),
     ])
@@ -188,3 +207,4 @@ def check_query_node(state: AgentState) -> dict[str, str]:
     corrected = result.replace("```sql", "").replace("```", "").strip()
     logger.debug("SQL Verdict: FIXED -> %s", corrected)
     return {"sql_query": corrected}
+

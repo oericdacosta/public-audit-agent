@@ -36,14 +36,11 @@ logger = logging.getLogger(__name__)
 
 
 def get_sync_status(
-    db_manager: DatabaseManager,
-    municipality_id: str,
-    year: int,
-    source: str
+    db_manager: DatabaseManager, municipality_id: str, year: int, source: str
 ) -> Optional[str]:
     """
     Check if a specific year/source has been successfully ingested.
-    
+
     Returns:
         'COMPLETED', 'STARTED', 'FAILED', or None if not found.
     """
@@ -52,7 +49,7 @@ def get_sync_status(
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT status FROM etl_metadata 
+                SELECT status FROM etl_metadata
                 WHERE municipio_id = ? AND year = ? AND source = ?
                 """,
                 (municipality_id, year, source),
@@ -70,13 +67,13 @@ def update_sync_status(
     year: int,
     source: str,
     status: str,
-    count: int = 0
+    count: int = 0,
 ) -> None:
     """Update the execution state in the database."""
     with db_manager.get_connection() as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO etl_metadata 
+            INSERT OR REPLACE INTO etl_metadata
             (municipio_id, year, source, status, record_count, last_updated)
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
@@ -91,16 +88,16 @@ def process_task(
     municipality_id: str,
     year: int,
     source_key: str,
-    collector: Any
+    collector: Any,
 ) -> str:
     """
     Execute a single ETL task for a (Year, Source) pair.
-    
+
     Returns:
         Status message string.
     """
     process_id = f"{source_key.upper()}:{year}"
-    
+
     # Check Idempotency
     current_status = get_sync_status(db_manager, municipality_id, year, source_key)
     if current_status == "COMPLETED":
@@ -111,11 +108,13 @@ def process_task(
     try:
         logger.info("🚀 Starting %s", process_id)
         count = collector.run(municipality_id, year)
-        
+
         # Success
-        update_sync_status(db_manager, municipality_id, year, source_key, "COMPLETED", count)
+        update_sync_status(
+            db_manager, municipality_id, year, source_key, "COMPLETED", count
+        )
         return f"✅ Finished {process_id} ({count} items)"
-    
+
     except Exception as e:
         logger.error("Failed %s: %s", process_id, e)
         update_sync_status(db_manager, municipality_id, year, source_key, "FAILED")
@@ -123,18 +122,17 @@ def process_task(
 
 
 def run_etl(
-    municipality_id: Optional[str] = None,
-    manual_year: Optional[str] = None
+    municipality_id: Optional[str] = None, manual_year: Optional[str] = None
 ) -> None:
     """
     Run the ETL process for a municipality.
-    
+
     Args:
         municipality_id: Municipality code (e.g., '162'). Uses config if not provided.
         manual_year: Override the rolling window with a specific year.
     """
     settings = get_settings()
-    
+
     # 1. Resolve Parameters
     if not municipality_id:
         municipality_id = settings.get("audit", {}).get("city_code")
@@ -173,23 +171,23 @@ def run_etl(
 
     # 4. Parallel Execution with Idempotency
     tasks = []
-    
+
     with ThreadPoolExecutor(max_workers=5) as executor:
         for year in years:
             for source_key in data_sources:
                 if source_key not in collector_map:
                     continue
-                    
+
                 collector = collector_map[source_key]
                 tasks.append(
                     executor.submit(
-                        process_task, 
-                        db_manager, 
-                        client, 
-                        municipality_id, 
-                        year, 
-                        source_key, 
-                        collector
+                        process_task,
+                        db_manager,
+                        client,
+                        municipality_id,
+                        year,
+                        source_key,
+                        collector,
                     )
                 )
 
@@ -203,9 +201,7 @@ def run_etl(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CivicAudit Professional ETL")
-    parser.add_argument(
-        "--municipality", help="Override municipality code (e.g. 162)"
-    )
+    parser.add_argument("--municipality", help="Override municipality code (e.g. 162)")
     parser.add_argument("--year", help="Override Rolling Window with single year")
 
     args = parser.parse_args()

@@ -24,6 +24,15 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ruff>=0.14.10",
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.0",
+    "mypy>=1.10.0",
+    "pre-commit>=3.7.0",
+    "types-PyYAML>=6.0.0",
+    "types-requests>=2.32.0",
+    "pip-audit>=2.7.0",
+    "bandit>=1.7.0",
 ]
 
 [tool.ruff]
@@ -33,3 +42,17 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B"]
 ignore = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+addopts = "-v --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=30"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+check_untyped_defs = true

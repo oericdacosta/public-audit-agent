@@ -6,7 +6,7 @@ for code generation, critique, and execution.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -34,18 +34,18 @@ def _build_prompt() -> str:
 def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) -> str:
     """
     Core logic to generate code using LLM.
-    
+
     Args:
         user_question: The user's question to generate code for.
         sql_query: Optional pre-generated SQL query from Fiscal Agent.
-    
+
     Returns:
         Generated Python code as a string.
     """
     llm = get_llm("analyst_model")
 
     system_instructions = _build_prompt()
-    
+
     # Inject the SQL from Fiscal Agent if available
     input_text = f"User Question: {user_question}"
     if sql_query:
@@ -61,7 +61,7 @@ def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) ->
     chain = prompt | llm
     response = chain.invoke({"input": input_text})
 
-    return clean_markdown_code(response.content)
+    return clean_markdown_code(response.content)  # type: ignore
 
 
 # --- NODE FUNCTIONS ---
@@ -71,10 +71,10 @@ def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) ->
 def generate(state: AgentState) -> dict[str, Any]:
     """
     Generate Python code based on user question and optional SQL query.
-    
+
     Args:
         state: Current agent state containing messages, errors, and evaluations.
-    
+
     Returns:
         Updated state with generated code, incremented iterations, and cleared errors.
     """
@@ -100,9 +100,9 @@ def generate(state: AgentState) -> dict[str, Any]:
         )
 
     # Use the pure logic function, avoiding class instantiation loop
-    last_message = messages[-1].content
-    sql_query = state.get("sql_query")
-    
+    last_message = str(messages[-1].content)
+    sql_query = cast(str, state.get("sql_query")) if state.get("sql_query") else None
+
     code = _generate_code_logic(last_message, sql_query)
 
     return {
@@ -117,29 +117,30 @@ def generate(state: AgentState) -> dict[str, Any]:
 def critique(state: AgentState) -> dict[str, str]:
     """
     Review generated code using the CriticAgent.
-    
+
     Args:
         state: Current agent state containing code and messages.
-    
+
     Returns:
         Updated state with critic's evaluation.
     """
     logger.debug("NODE: CRITIC")
     code = state["code"]
     messages = state["messages"]
-    
+
     # Find the last user message to evaluate against
     user_question = "Unknown question"
     for m in reversed(messages):
         if isinstance(m, HumanMessage):
-            user_question = m.content
+            user_question = str(m.content)
             break
 
     # Import here to avoid circular dependency
     from src.agents.critic import CriticAgent
 
     critic = CriticAgent()
-    evaluation = critic.review_code(user_question, code)
+    # type: ignore[arg-type]
+    evaluation = critic.review_code(user_question, code)  # type: ignore
     logger.debug("Critic Verdict: %s", evaluation)
 
     return {"evaluation": evaluation}
@@ -149,19 +150,19 @@ def critique(state: AgentState) -> dict[str, str]:
 def execute(state: AgentState) -> dict[str, Optional[str]]:
     """
     Execute generated code in a Docker sandbox.
-    
+
     Args:
         state: Current agent state containing code to execute.
-    
+
     Returns:
         Updated state with execution output and any errors.
     """
     logger.debug("NODE: EXECUTE")
     code = state["code"]
     logger.debug("EXECUTING CODE:\n%s\n----------------", code)
-    
+
     sandbox = DockerSandbox()
-    result = sandbox.execute(code)
+    result = sandbox.execute(code)  # type: ignore
 
     if (
         result.startswith("Execution Error")
@@ -169,17 +170,17 @@ def execute(state: AgentState) -> dict[str, Optional[str]]:
         or "Traceback" in result
     ):
         return {"output": result, "error": result}
-    
+
     return {"output": result, "error": None}
 
 
 def should_continue(state: AgentState) -> str:
     """
     Determine whether to continue the generate-critique loop.
-    
+
     Args:
         state: Current agent state with iteration count and any errors.
-    
+
     Returns:
         Either "generate" to retry or END to finish.
     """
@@ -210,21 +211,21 @@ def should_continue(state: AgentState) -> str:
 def check_execution(state: AgentState) -> str:
     """
     Check execution result and decide whether to retry.
-    
+
     Args:
         state: Current agent state with execution result.
-    
+
     Returns:
         Either "generate" to retry or END to finish.
     """
     settings = get_settings()
     max_retries = settings.get("agent", {}).get("max_retries", 3)
-    
+
     error = state.get("error")
     iterations = state.get("iterations", 0)
 
     if error and iterations < max_retries:
         logger.debug("DECISION: EXEC ERROR -> RETRY (%d/%d)", iterations, max_retries)
         return "generate"
-    
+
     return END

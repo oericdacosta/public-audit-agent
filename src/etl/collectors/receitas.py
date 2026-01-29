@@ -19,17 +19,17 @@ class RevenueCollector(BaseCollector):
     def run(self, municipio_id: str, year: int) -> int:
         """
         Run the revenue collection for a municipality and year.
-        
+
         Returns:
             Total number of records collected.
         """
         total = 0
         logger.info(">>> Starting Receitas")
-        
+
         for batch, month_ref in self.fetch_by_month(municipio_id, year):
             saved = self.save(batch, municipio_id, year, month_ref)
             total += saved
-            
+
         logger.info("Receitas completed: %d records.", total)
         return total
 
@@ -38,7 +38,7 @@ class RevenueCollector(BaseCollector):
     ) -> Iterator[tuple[list[dict[str, Any]], str]]:
         """
         Fetch revenue data month by month.
-        
+
         Yields:
             Tuples of (batch_data, month_reference).
         """
@@ -76,18 +76,18 @@ class RevenueCollector(BaseCollector):
         batch_data: list[dict[str, Any]],
         municipio_id: str,
         year: int,
-        month_ref: str
+        month_ref: str,
     ) -> int:
         """
         Save revenue records to the database.
-        
+
         Returns:
             Number of records saved.
         """
         conn = self.db_manager.get_raw_connection()
         cursor = conn.cursor()
         count = 0
-        
+
         try:
             for i, item in enumerate(batch_data):
                 rec_code = item.get("codigo_receita", "0")
@@ -117,9 +117,9 @@ class RevenueCollector(BaseCollector):
                     ),
                 )
                 count += 1
-            
+
             conn.commit()
         finally:
             conn.close()
-        
+
         return count

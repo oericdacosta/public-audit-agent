@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ──────────────────────────────────────────────────────────
+  # Job 1: Lint e Formatação
+  # ──────────────────────────────────────────────────────────
+  lint:
+    name: 🔍 Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run Ruff Linter
+        run: uv run ruff check src/ tests/
+
+      - name: Run Ruff Formatter Check
+        run: uv run ruff format --check src/ tests/
+
+  # ──────────────────────────────────────────────────────────
+  # Job 2: Type Checking
+  # ──────────────────────────────────────────────────────────
+  typecheck:
+    name: 🔷 Type Check
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run MyPy
+        run: uv run mypy src/ --ignore-missing-imports
+
+  # ──────────────────────────────────────────────────────────
+  # Job 3: Testes Unitários
+  # ──────────────────────────────────────────────────────────
+  test:
+    name: 🧪 Tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run Tests with Coverage
+        run: uv run pytest tests/ -v --cov=src --cov-report=xml
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ──────────────────────────────────────────────────────────
+  # Job 4: Security Scanning
+  # ──────────────────────────────────────────────────────────
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Export requirements for pip-audit
+        run: uv export --no-dev > requirements.txt
+
+      - name: Run pip-audit (Vulnerability Scan)
+        run: uv run pip-audit --requirement requirements.txt
+
+      - name: Run Bandit (SAST)
+        run: |
+          uv add --dev bandit
+          uv run bandit -r src/ -ll -ii
+
+  # ──────────────────────────────────────────────────────────
+  # Job 5: Build Docker Image (DISABLED - Project not ready)
+  # ──────────────────────────────────────────────────────────
+  # build:
+  #   name: 🐳 Build Docker
+  #   runs-on: ubuntu-latest
+  #   needs: [lint, test]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
+  #
+  #     - name: Build Docker Image
+  #       uses: docker/build-push-action@v5
+  #       with:
+  #         context: .
+  #         push: false
+  #         tags: public-audit-agent:${{ github.sha }}
+  #         cache-from: type=gha
+  #         cache-to: type=gha,mode=max
+  #
+  #     - name: Test Docker Image
+  #       run: |
+  #         docker build -t test-image .
+  #         docker run --rm test-image python -c "from src.config import get_settings; print('✅ Import OK')"

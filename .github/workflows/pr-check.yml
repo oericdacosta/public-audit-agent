@@ -44,9 +44,11 @@ jobs:
         run: |
           CHANGED=$(git diff --shortstat origin/${{ github.base_ref }}...HEAD | awk '{print $4+$6}')
           echo "Lines changed: $CHANGED"
-          if [ "$CHANGED" -gt 3000 ]; then
-            echo "⚠️ PR muito grande ($CHANGED linhas). Considere dividir."
+          if [ "$CHANGED" -gt 800 ]; then
+            echo "❌ PR muito grande ($CHANGED linhas). Divida em PRs menores."
             exit 1
-          elif [ "$CHANGED" -gt 1000 ]; then
-            echo "⚠️ PR grande ($CHANGED linhas). Considere dividir em PRs menores."
+          elif [ "$CHANGED" -gt 300 ]; then
+            echo "⚠️ PR grande ($CHANGED linhas). Considere dividir."
+          else
+            echo "✅ Tamanho do PR OK ($CHANGED linhas)"
           fi

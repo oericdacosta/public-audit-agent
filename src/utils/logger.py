@@ -1,25 +1,36 @@
+"""
+Observability and Logging Utilities.
 
-import logging
-import json
-import time
+Provides structured JSON logging and LangGraph node observability decorator.
+"""
+
 import functools
+import json
+import logging
+import time
 import traceback
-import os
-from typing import Any, Callable, Dict, Optional
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, TypeVar
+
+from langchain_community.callbacks import get_openai_callback
+
+# --- TYPE VARIABLES ---
+F = TypeVar("F", bound=Callable[..., Any])
 
 # --- CONFIGURATION ---
 LOG_LEVEL = logging.INFO
 logging.basicConfig(level=LOG_LEVEL, format="%(message)s")
 logger = logging.getLogger("CivicAudit")
 
+
 class JsonFormatter(logging.Formatter):
-    """
-    Formatter that outputs JSON strings for structured logging.
-    """
-    def format(self, record):
-        log_record = {
+    """Formatter that outputs JSON strings for structured logging."""
+    
+    def format(self, record: logging.LogRecord) -> str:
+        """Format the log record as a JSON string."""
+        log_record: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "message": record.getMessage(),
@@ -32,40 +43,47 @@ class JsonFormatter(logging.Formatter):
             
         return json.dumps(log_record)
 
+
 # Configure the root logger to use JSON formatting
-handlers = []
+_handlers: list[logging.Handler] = []
 
 # Console Handler
-stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(JsonFormatter())
-handlers.append(stream_handler)
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(JsonFormatter())
+_handlers.append(_stream_handler)
 
 # File Handler
-log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
-os.makedirs(log_dir, exist_ok=True)
-file_handler = logging.FileHandler(os.path.join(log_dir, "agent_trace.jsonl"))
-file_handler.setFormatter(JsonFormatter())
-handlers.append(file_handler)
+_log_dir = Path(__file__).parent.parent.parent / "logs"
+_log_dir.mkdir(parents=True, exist_ok=True)
+_file_handler = logging.FileHandler(_log_dir / "agent_trace.jsonl")
+_file_handler.setFormatter(JsonFormatter())
+_handlers.append(_file_handler)
 
 # Update the existing logger
 if logger.hasHandlers():
     logger.handlers = []
-for h in handlers:
+for h in _handlers:
     logger.addHandler(h)
 logger.setLevel(LOG_LEVEL)
 
-from langchain_community.callbacks import get_openai_callback
 
 # --- OBSERVABILITY DECORATOR ---
 
-def observe_node(event_type: str = "NODE_EXECUTION"):
+def observe_node(event_type: str = "NODE_EXECUTION") -> Callable[[F], F]:
     """
     Decorator to wrap LangGraph nodes with observability logic.
-    Captures input, output, latency, and token usage.
+    
+    Captures input, output, latency, and token usage for each node execution.
+    
+    Args:
+        event_type: Type of event to log (e.g., "THOUGHT", "TOOL_CALL").
+    
+    Returns:
+        Decorated function with observability.
     """
-    def decorator(func: Callable):
+    def decorator(func: F) -> F:
         @functools.wraps(func)
-        def wrapper(state: Dict[str, Any], *args, **kwargs):
+        def wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
             start_time = time.perf_counter()
             trace_id = state.get("trace_id", str(uuid.uuid4()))
             span_id = str(uuid.uuid4())
@@ -78,7 +96,7 @@ def observe_node(event_type: str = "NODE_EXECUTION"):
             result = None
             status = "SUCCESS"
             error = None
-            token_usage = {}
+            token_usage: dict[str, Any] = {}
 
             try:
                 # Execute Node with Token Tracking
@@ -100,13 +118,13 @@ def observe_node(event_type: str = "NODE_EXECUTION"):
                 status = "ERROR"
                 error = str(e)
                 output_summary = traceback.format_exc()
-                raise e
+                raise
             finally:
                 end_time = time.perf_counter()
                 latency_ms = (end_time - start_time) * 1000
                 
                 # Log Structured Event
-                log_data = {
+                log_data: dict[str, Any] = {
                     "trace_id": trace_id,
                     "span_id": span_id,
                     "event_type": event_type,
@@ -121,8 +139,11 @@ def observe_node(event_type: str = "NODE_EXECUTION"):
                 if error:
                     log_data["error"] = error
                     
-                logger.info(f"Executed {func.__name__}", extra={"structured_data": log_data})
+                logger.info(
+                    "Executed %s", func.__name__,
+                    extra={"structured_data": log_data}
+                )
                 
             return result
-        return wrapper
+        return wrapper  # type: ignore[return-value]
     return decorator

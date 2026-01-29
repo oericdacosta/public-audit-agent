@@ -1,32 +1,55 @@
+"""
+MCP Server Shim.
+
+Client shim for sandbox code to communicate with the MCP server via TCP.
+This file is injected into the Docker sandbox to provide database access.
+"""
+
 import json
+import logging
 import os
 import socket
+from typing import Any, Optional, Union
 
 # Configuration (Injected or Default)
 MCP_HOST = os.environ.get("MCP_HOST", "host.docker.internal")
 MCP_PORT = int(os.environ.get("MCP_PORT", "8000"))
 
+logger = logging.getLogger(__name__)
 
-def _rpc_call(method, params=None, msg_id=1):
+
+def _rpc_call(
+    method: str,
+    params: Optional[dict[str, Any]] = None,
+    msg_id: int = 1
+) -> dict[str, Any]:
     """
-    Sends a JSON-RPC request over a TCP socket and waits for a response.
+    Send a JSON-RPC request over a TCP socket and wait for response.
+    
+    Args:
+        method: RPC method name.
+        params: Optional method parameters.
+        msg_id: Message ID for request tracking.
+    
+    Returns:
+        Parsed JSON response dictionary.
+    
+    Raises:
+        Exception: If connection fails or response is invalid.
     """
-    payload = {"jsonrpc": "2.0", "method": method, "id": msg_id}
+    payload: dict[str, Any] = {
+        "jsonrpc": "2.0",
+        "method": method,
+        "id": msg_id
+    }
     if params:
         payload["params"] = params
 
-    # Connect to Server
     try:
-        # Create a new socket for each call (Simple & Robust for this use case)
-        # For high-performance, we would reuse the socket, but that requires
-        # class-based Shim.
         with socket.create_connection((MCP_HOST, MCP_PORT), timeout=10) as sock:
-            # Send Request (Newline delimited)
             data = json.dumps(payload) + "\n"
             sock.sendall(data.encode("utf-8"))
 
-            # Read Response
-            # We expect a single line JSON response
             f = sock.makefile("r", encoding="utf-8")
             response_line = f.readline()
 
@@ -43,11 +66,8 @@ def _rpc_call(method, params=None, msg_id=1):
         raise Exception(f"RPC/Network Error: {str(e)}") from e
 
 
-def query_sql(sql_query):
-    """
-    Executes a SQL query via the MCP Server.
-    """
-    # 1. Initialize (Handshake)
+def _initialize_session() -> None:
+    """Initialize a session with the MCP server (best effort)."""
     try:
         _rpc_call(
             "initialize",
@@ -58,21 +78,27 @@ def query_sql(sql_query):
             },
             1,
         )
-        # We don't strictly need to wait for initialized notification in this
-        # simple TCP adapter but good practice to follow flow if server expects it.
-        # calls are sequential on new socket in this implementation?
-        # WAIT. ephemeral socket means NEW connection every time.
-        # The TCP server I wrote doesn't persist state across connections about
-        # "initialization".
-        # It just processes messages.
-        # So "initialize" might be redundant per call but safe.
-        pass
     except Exception:
-        pass  # Ignore init errors if server is already running/robust
+        # Ignore init errors if server is already running/robust
+        pass
 
-    # 2. Call Tool
+
+def query_sql(sql_query: str) -> Union[list[dict[str, Any]], str]:
+    """
+    Execute a SQL query via the MCP Server.
+    
+    Args:
+        sql_query: SQL query to execute.
+    
+    Returns:
+        Query results as list of dicts, or error message string.
+    """
+    _initialize_session()
+    
     response = _rpc_call(
-        "tools/call", {"name": "query_sql", "arguments": {"sql_query": sql_query}}, 2
+        "tools/call",
+        {"name": "query_sql", "arguments": {"sql_query": sql_query}},
+        2
     )
 
     if "error" in response:
@@ -84,7 +110,7 @@ def query_sql(sql_query):
             return res["structuredContent"].get("result", [])
 
         if "content" in res:
-            items = []
+            items: list[Any] = []
             for content in res.get("content", []):
                 if content["type"] == "text":
                     try:
@@ -101,13 +127,18 @@ def query_sql(sql_query):
     return response
 
 
-def list_tables():
+def list_tables() -> list[str]:
     """
-    Lists tables in the database.
+    List all tables in the database.
+    
+    Returns:
+        List of table names.
     """
-    # Simply call tool. Initialize irrelevant for this stateless TCP shim logic
-    # (My tcp_server.py implementation is naive and handles any request)
-    response = _rpc_call("tools/call", {"name": "list_tables", "arguments": {}}, 2)
+    response = _rpc_call(
+        "tools/call",
+        {"name": "list_tables", "arguments": {}},
+        2
+    )
 
     if "error" in response:
         raise Exception(f"RPC Error calling list_tables: {response['error']}")
@@ -117,7 +148,7 @@ def list_tables():
         if "structuredContent" in res:
             return res["structuredContent"].get("result", [])
         if "content" in res:
-            items = []
+            items: list[str] = []
             for content in res.get("content", []):
                 if content["type"] == "text":
                     try:
@@ -129,9 +160,15 @@ def list_tables():
     raise Exception(f"Unexpected response format from list_tables: {response}")
 
 
-def describe_table(table_name):
+def describe_table(table_name: str) -> str:
     """
-    Get schema for a table.
+    Get schema DDL for a table.
+    
+    Args:
+        table_name: Name of the table to describe.
+    
+    Returns:
+        DDL statement for the table.
     """
     response = _rpc_call(
         "tools/call",
@@ -149,12 +186,20 @@ def describe_table(table_name):
     return ""
 
 
-def search_definitions(query: str):
+def search_definitions(query: str) -> Union[list[dict[str, str]], str]:
     """
-    Search for table definitions.
+    Search for table definitions matching a keyword.
+    
+    Args:
+        query: Keyword to search for.
+    
+    Returns:
+        Matching definitions or empty string.
     """
     response = _rpc_call(
-        "tools/call", {"name": "search_definitions", "arguments": {"query": query}}, 2
+        "tools/call",
+        {"name": "search_definitions", "arguments": {"query": query}},
+        2
     )
 
     if "result" in response:

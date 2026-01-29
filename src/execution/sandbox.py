@@ -1,52 +1,82 @@
+"""
+Docker Sandbox.
+
+Executes Python code in isolated Docker containers for safety.
+"""
+
+import io
 import logging
-import os
+import tarfile
+from pathlib import Path
+from typing import Optional
 
 import docker
 
 from src.config import get_settings
+from src.exceptions import ConfigurationError, SandboxError
 
 logger = logging.getLogger(__name__)
 
 
 class DockerSandbox:
-    def __init__(self):
-        self.settings = get_settings()
+    """
+    Executes Python code in ephemeral Docker containers.
+    
+    Provides isolation for running untrusted code with
+    network access to the MCP server.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the Docker sandbox with configured image."""
+        settings = get_settings()
         try:
-            self.image = self.settings["sandbox"]["image"]
+            self.image = settings["sandbox"]["image"]
         except KeyError as e:
-            raise ValueError("Missing 'sandbox.image' in config.yaml") from e
+            raise ConfigurationError(
+                "Missing configuration key",
+                details="'sandbox.image' not found in config.yaml"
+            ) from e
 
         self.client = docker.from_env()
         self._ensure_image()
 
-    def _ensure_image(self):
+    def _ensure_image(self) -> None:
+        """Ensure the Docker image is available locally."""
         try:
             self.client.images.get(self.image)
         except docker.errors.ImageNotFound:
-            logger.info(f"Pulling image {self.image}...")
+            logger.info("Pulling image %s...", self.image)
             self.client.images.pull(self.image)
 
     def execute(self, code: str, timeout: int = 30) -> str:
         """
-        Executes python code in an ephemeral docker container using a mounted script.
+        Execute Python code in an ephemeral Docker container.
+        
+        Args:
+            code: Python code to execute.
+            timeout: Maximum execution time in seconds.
+        
+        Returns:
+            Output from code execution or error message.
         """
         try:
-            shim_path = os.path.join(os.path.dirname(__file__), "shim.py")
-            with open(shim_path, "r") as f:
-                shim_code = f.read()
-
+            # Load and prepend shim code
+            shim_path = Path(__file__).parent / "shim.py"
+            shim_code = shim_path.read_text(encoding="utf-8")
             full_code = shim_code + "\n\n" + code
 
-            network_name = os.environ.get("DOCKER_NETWORK_NAME", None)
+            # Get network configuration from environment
+            import os
+            network_name = os.environ.get("DOCKER_NETWORK_NAME")
             mcp_host = os.environ.get("MCP_HOST", "host.docker.internal")
             mcp_port = os.environ.get("MCP_PORT", "8000")
 
-            create_kwargs = {
+            create_kwargs: dict = {
                 "image": self.image,
                 "command": ["python", "/tmp/script.py"],
                 "environment": {"MCP_HOST": mcp_host, "MCP_PORT": mcp_port},
                 "mem_limit": "512m",
-                "detach": True,  # Return container object
+                "detach": True,
             }
 
             if network_name:
@@ -58,9 +88,7 @@ class DockerSandbox:
             container = self.client.containers.create(**create_kwargs)
 
             try:
-                import io
-                import tarfile
-
+                # Create tar archive with script
                 tar_stream = io.BytesIO()
                 with tarfile.open(fileobj=tar_stream, mode="w") as tar:
                     tar_data = full_code.encode("utf-8")
@@ -70,9 +98,8 @@ class DockerSandbox:
                 tar_stream.seek(0)
 
                 container.put_archive("/tmp", tar_stream)
-
                 container.start()
-                container.wait()
+                container.wait(timeout=timeout)
                 logs = container.logs()
 
                 return logs.decode("utf-8")
@@ -84,6 +111,8 @@ class DockerSandbox:
                     pass
 
         except docker.errors.ContainerError as e:
-            return f"Execution Error: {str(e)}"
+            return f"Execution Error: {e}"
+        except docker.errors.APIError as e:
+            raise SandboxError("Docker API error", details=str(e)) from e
         except Exception as e:
-            return f"System Error: {str(e)}"
+            return f"System Error: {e}"

@@ -1,10 +1,19 @@
+"""
+ETL Main Orchestrator.
+
+Coordinates the collection of public audit data from TCE APIs.
+"""
+
 import argparse
 import logging
 import sqlite3
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
 
 from src.config import get_settings
+
 from .client import TCEClient
 from .collectors.despesas import ExpensesCollector
 from .collectors.licitacoes import TendersCollector
@@ -12,44 +21,59 @@ from .collectors.receitas import RevenueCollector
 from .database import DatabaseManager
 
 # Logging Configuration
+_log_dir = Path(__file__).parent.parent.parent / "logs"
+_log_dir.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("logs/etl.log"), logging.StreamHandler()],
+    handlers=[
+        logging.FileHandler(_log_dir / "etl.log"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 
-def get_sync_status(db_manager, municipality_id, year, source):
+def get_sync_status(
+    db_manager: DatabaseManager,
+    municipality_id: str,
+    year: int,
+    source: str
+) -> Optional[str]:
     """
-    Checks if a specific year/source has been successfully ingested.
-    Returns: 'COMPLETED' or None
+    Check if a specific year/source has been successfully ingested.
+    
+    Returns:
+        'COMPLETED', 'STARTED', 'FAILED', or None if not found.
     """
-    conn = db_manager.get_connection()
-    cursor = conn.cursor()
     try:
-        cursor.execute(
-            """
-            SELECT status FROM etl_metadata 
-            WHERE municipality_id = ? AND year = ? AND source = ?
-            """,
-            (municipality_id, year, source),
-        )
-        row = cursor.fetchone()
-        return row[0] if row else None
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT status FROM etl_metadata 
+                WHERE municipio_id = ? AND year = ? AND source = ?
+                """,
+                (municipality_id, year, source),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
     except sqlite3.OperationalError:
         # Table might not exist yet if schema init failed
         return None
-    finally:
-        conn.close()
 
 
-def update_sync_status(db_manager, municipality_id, year, source, status, count=0):
-    """
-    Updates the execution state in the database.
-    """
-    conn = db_manager.get_connection()
-    try:
+def update_sync_status(
+    db_manager: DatabaseManager,
+    municipality_id: str,
+    year: int,
+    source: str,
+    status: str,
+    count: int = 0
+) -> None:
+    """Update the execution state in the database."""
+    with db_manager.get_connection() as conn:
         conn.execute(
             """
             INSERT OR REPLACE INTO etl_metadata 
@@ -59,14 +83,21 @@ def update_sync_status(db_manager, municipality_id, year, source, status, count=
             (municipality_id, year, source, status, count),
         )
         conn.commit()
-    finally:
-        conn.close()
 
 
-def process_task(db_manager, client, municipality_id, year, source_key, collector):
+def process_task(
+    db_manager: DatabaseManager,
+    client: TCEClient,
+    municipality_id: str,
+    year: int,
+    source_key: str,
+    collector: Any
+) -> str:
     """
-    Executes a single ETL task for a (Year, Source) pair.
-    Updates metadata status accordingly.
+    Execute a single ETL task for a (Year, Source) pair.
+    
+    Returns:
+        Status message string.
     """
     process_id = f"{source_key.upper()}:{year}"
     
@@ -78,7 +109,7 @@ def process_task(db_manager, client, municipality_id, year, source_key, collecto
     # Start
     update_sync_status(db_manager, municipality_id, year, source_key, "STARTED")
     try:
-        logger.info(f"🚀 Starting {process_id}")
+        logger.info("🚀 Starting %s", process_id)
         count = collector.run(municipality_id, year)
         
         # Success
@@ -86,12 +117,22 @@ def process_task(db_manager, client, municipality_id, year, source_key, collecto
         return f"✅ Finished {process_id} ({count} items)"
     
     except Exception as e:
-        logger.error(f"Failed {process_id}: {e}")
+        logger.error("Failed %s: %s", process_id, e)
         update_sync_status(db_manager, municipality_id, year, source_key, "FAILED")
         return f"⚠️ Failed {process_id}: {str(e)}"
 
 
-def run_etl(municipality_id=None, manual_year=None):
+def run_etl(
+    municipality_id: Optional[str] = None,
+    manual_year: Optional[str] = None
+) -> None:
+    """
+    Run the ETL process for a municipality.
+    
+    Args:
+        municipality_id: Municipality code (e.g., '162'). Uses config if not provided.
+        manual_year: Override the rolling window with a specific year.
+    """
     settings = get_settings()
     
     # 1. Resolve Parameters
@@ -103,21 +144,20 @@ def run_etl(municipality_id=None, manual_year=None):
         years = [int(manual_year)]
     else:
         current_year = datetime.now().year
-        lookback = settings.get("audit", {}).get("data_retention_years", 5) # Default 5 if missing
+        lookback = settings.get("audit", {}).get("data_retention_years", 5)
         years = list(range(current_year, current_year - lookback, -1))
 
     # Data Sources
-    # Only using stable sources for now
     data_sources = ["licitacoes", "despesas", "receitas"]
     if "contratos" in settings.get("audit", {}).get("data_sources", []):
-         data_sources.append("contratos")
+        data_sources.append("contratos")
     if "notas_fiscais" in settings.get("audit", {}).get("data_sources", []):
-         data_sources.append("notas_fiscais")
+        data_sources.append("notas_fiscais")
 
-    logger.info(f"--- STARTING PROFESSIONAL BATCH ETL ---")
-    logger.info(f"Municipality: {municipality_id}")
-    logger.info(f"Years Window: {years}")
-    logger.info(f"Sources: {data_sources}")
+    logger.info("--- STARTING PROFESSIONAL BATCH ETL ---")
+    logger.info("Municipality: %s", municipality_id)
+    logger.info("Years Window: %s", years)
+    logger.info("Sources: %s", data_sources)
 
     # 2. Infra Init
     db_manager = DatabaseManager()
@@ -125,27 +165,14 @@ def run_etl(municipality_id=None, manual_year=None):
     client = TCEClient()
 
     # 3. Collector Map
-    # Import here to avoid circulars if moved to top
-    from .collectors.despesas import ExpensesCollector
-    from .collectors.licitacoes import TendersCollector
-    from .collectors.receitas import RevenueCollector
-    # from .collectors.contratos import ContractsCollector
-    # from .collectors.notas import InvoicesCollector
-
     collector_map = {
         "licitacoes": TendersCollector(db_manager, client),
         "despesas": ExpensesCollector(db_manager, client),
         "receitas": RevenueCollector(db_manager, client),
-        # Assuming Contratos/Notas are stable now, add them if imported
-        # "contratos": ContractsCollector(db_manager, client),
-        # "notas_fiscais": InvoicesCollector(db_manager, client)
     }
 
     # 4. Parallel Execution with Idempotency
     tasks = []
-    
-    # Separate DB manager per thread is safer slightly, but SQLite is thread-safe with WAL
-    # We pass the shared db_manager but inside it creates fresh connections
     
     with ThreadPoolExecutor(max_workers=5) as executor:
         for year in years:
@@ -179,7 +206,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--municipality", help="Override municipality code (e.g. 162)"
     )
-    # Manual override for testing specific years
     parser.add_argument("--year", help="Override Rolling Window with single year")
 
     args = parser.parse_args()

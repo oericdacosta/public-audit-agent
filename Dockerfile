@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Install UV (The Modern Python Package Manager) - Pinned version for stability
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /bin/uv
@@ -15,11 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create a non-root user and group
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Copy requirements
-COPY requirements.txt .
+# Copy project definition
+COPY pyproject.toml .
 
-# Install dependencies using UV (System-wide is fine as we are in a container)
-RUN uv pip install --system --no-cache -r requirements.txt
+# Install dependencies using UV directly from pyproject.toml
+RUN uv pip install --system --no-cache .
 
 # Copy source code and config
 COPY src/ src/

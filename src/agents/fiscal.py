@@ -5,7 +5,7 @@ SQL specialist agent for generating and validating database queries.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -20,22 +20,25 @@ logger = logging.getLogger(__name__)
 
 # --- SYSTEM PROMPTS ---
 
-GENERATE_SQL_PROMPT = """
-You are a SQL Expert for a SQLite database containing public audit data (tenders, expenses, revenues).
-Your Goal: Given a user question, generate a correct executable SQL query.
+GENERATE_SQL_PROMPT = (
+    "You are a SQL Expert for a SQLite database containing public audit data "
+    "(tenders, expenses, revenues).\n"
+    "Your Goal: Given a user question, generate a correct executable SQL query.\n\n"
+    "DIALECT: SQLite\n"
+    "RULES:\n"
+    "1. PUSH DOWN COMPUTATION: Do NOT select all columns. Use SUM(), COUNT(), etc. "
+    "whenever possible.\n"
+    "2. QUOTE VALUES: `where exercicio_orcamento = '2024'` (String comparison).\n"
+    "3. JSON HANDLING: Some columns are JSON. You generally don't need to parse them "
+    "in SQL, just select the columns asked.\n"
+    "4. ONLY SELECT queries. No DML.\n"
+    "5. IF the question requires data from multiple tables, use JOIN.\n"
+    "6. RETURN ONLY THE RAW SQL. No markdown blocks, no 'Here is the code'. "
+    "Just the SQL string.\n\n"
+    "Schema Context:\n"
+    "{schema_context}"
+)
 
-DIALECT: SQLite
-RULES:
-1. PUSH DOWN COMPUTATION: Do NOT select all columns. Use SUM(), COUNT(), etc. whenever possible.
-2. QUOTE VALUES: `where exercicio_orcamento = '2024'` (String comparison).
-3. JSON HANDLING: Some columns are JSON. You generally don't need to parse them in SQL, just select the columns asked.
-4. ONLY SELECT queries. No DML.
-5. IF the question requires data from multiple tables, use JOIN.
-6. RETURN ONLY THE RAW SQL. No markdown blocks, no 'Here is the code'. Just the SQL string.
-
-Schema Context:
-{schema_context}
-"""
 
 CHECK_SQL_PROMPT = """
 You are a Senior SQL Reviewer.
@@ -62,33 +65,38 @@ If the query is INVALID, output the CORRECTED query (JUST the SQL).
 def _extract_schema_context(messages: list[BaseMessage]) -> str:
     """
     Extract schema context from message history.
-    
+
     Args:
         messages: List of messages to search through.
-    
+
     Returns:
         Schema context string or empty string if not found.
     """
-    for m in messages:
-        if isinstance(m, HumanMessage) and "Schema Context:" in m.content:
-            return m.content
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage):
+            content = cast(str, m.content)
+            if "Schema Context:" in content:
+                return content
     return ""
 
 
 def _extract_user_question(messages: list[BaseMessage]) -> str:
     """
     Extract the original user question from message history.
-    
+
     Args:
         messages: List of messages to search through.
-    
+
     Returns:
         User question string or "Unknown" if not found.
     """
     for m in messages:
         if isinstance(m, HumanMessage):
-            if "Schema Context:" not in m.content and "Available tables:" not in m.content:
-                return m.content
+            content = cast(str, m.content)
+            # Check if message is not a context message
+            is_context = "Schema Context:" in content or "Available tables:" in content
+            if not is_context:
+                return content
     return "Unknown"
 
 
@@ -99,7 +107,7 @@ def _extract_user_question(messages: list[BaseMessage]) -> str:
 def list_tables_node(state: AgentState) -> dict[str, Any]:
     """
     List all available database tables.
-    
+
     Returns:
         Updated state with table list message.
     """
@@ -112,21 +120,21 @@ def list_tables_node(state: AgentState) -> dict[str, Any]:
 def get_schema_node(state: AgentState) -> dict[str, Any]:
     """
     Fetch schema information for relevant tables.
-    
+
     Returns:
         Updated state with schema context message.
     """
     logger.debug("FISCAL: GET SCHEMA")
-    
+
     # Get schema for main tables to ensure context
     target_tables = ["licitacoes", "despesas", "receitas"]
     schemas: list[str] = []
-    
+
     for t in target_tables:
         s = describe_table(t)
         if "not found" not in s:
             schemas.append(s)
-            
+
     schema_text = "\n\n".join(schemas)
     return {"messages": [HumanMessage(content=f"Schema Context:\n{schema_text}")]}
 
@@ -135,76 +143,76 @@ def get_schema_node(state: AgentState) -> dict[str, Any]:
 def generate_query_node(state: AgentState) -> dict[str, Optional[str]]:
     """
     Generate SQL query based on user question and schema context.
-    
+
     Validates generated SQL for safety before returning.
-    
+
     Returns:
         Updated state with generated SQL query or error if unsafe.
     """
     logger.debug("FISCAL: GENERATE SQL")
     messages = state["messages"]
-    
+
     # Extract context using helper functions
     user_question = _extract_user_question(messages)
     schema_context = _extract_schema_context(messages)
 
     llm = get_llm("fiscal_model")
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", GENERATE_SQL_PROMPT),
-        ("human", "{question}")
-    ])
-    
+    prompt = ChatPromptTemplate.from_messages(
+        [("system", GENERATE_SQL_PROMPT), ("human", "{question}")]
+    )
+
     chain = prompt | llm
-    response = chain.invoke({
-        "schema_context": schema_context,
-        "question": user_question
-    })
-    
-    sql_query = response.content.replace("```sql", "").replace("```", "").strip()
+    response = chain.invoke(
+        {"schema_context": schema_context, "question": user_question}
+    )
+
+    sql_query = response.content.replace("```sql", "").replace("```", "").strip()  # type: ignore
     logger.debug("Generated SQL: %s", sql_query)
-    
+
     # Validate LLM-generated SQL for safety
     is_safe, error = validate_sql_safety(sql_query)
     if not is_safe:
         logger.warning("LLM generated unsafe SQL: %s - %s", sql_query[:100], error)
         return {"sql_query": None, "error": f"Generated SQL is unsafe: {error}"}
-    
+
     return {"sql_query": sql_query}
 
 
 @observe_node(event_type="THOUGHT")
-def check_query_node(state: AgentState) -> dict[str, str]:
+def check_query_node(state: AgentState) -> dict[str, Optional[str]]:
     """
     Validate and potentially correct the generated SQL query.
-    
+
     Returns:
         Updated state with validated/corrected SQL query.
     """
     logger.debug("FISCAL: CHECK SQL")
-    sql_query = state["sql_query"]
+    sql_query = state.get("sql_query")
     messages = state["messages"]
-    
+
+    if not sql_query:
+        logger.warning("No SQL query to check")
+        return {"sql_query": None}
+
     schema_context = _extract_schema_context(messages)
-            
+
     llm = get_llm("fiscal_model")
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", CHECK_SQL_PROMPT),
-    ])
-    
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", CHECK_SQL_PROMPT),
+        ]
+    )
+
     chain = prompt | llm
-    response = chain.invoke({
-        "query": sql_query,
-        "schema_context": schema_context
-    })
-    
-    result = response.content.strip()
-    
+    response = chain.invoke({"query": sql_query, "schema_context": schema_context})
+
+    result = cast(str, response.content).strip()
+
     if result == "VALID":
         logger.debug("SQL Verdict: VALID")
         return {"sql_query": sql_query}
-    
+
     # The output is the corrected query
     corrected = result.replace("```sql", "").replace("```", "").strip()
     logger.debug("SQL Verdict: FIXED -> %s", corrected)
     return {"sql_query": corrected}
-

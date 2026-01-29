@@ -1,0 +1,50 @@
+name: PR Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # ──────────────────────────────────────────────────────────
+  # Validação de Título do PR (Conventional Commits)
+  # ──────────────────────────────────────────────────────────
+  pr-title:
+    name: 📝 PR Title Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR Title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+
+  # ──────────────────────────────────────────────────────────
+  # Validação de Tamanho do PR
+  # ──────────────────────────────────────────────────────────
+  size-check:
+    name: 📏 PR Size Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check PR Size
+        run: |
+          CHANGED=$(git diff --shortstat origin/${{ github.base_ref }}...HEAD | awk '{print $4+$6}')
+          echo "Lines changed: $CHANGED"
+          if [ "$CHANGED" -gt 500 ]; then
+            echo "⚠️ PR muito grande ($CHANGED linhas). Considere dividir."
+            exit 1
+          fi

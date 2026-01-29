@@ -1,41 +1,86 @@
-from typing import Optional
+"""
+Audit Workflow Graph.
+
+Main orchestrator for the CivicAudit workflow integrating all agents.
+"""
+
+import logging
 import uuid
+from typing import Optional
 
 from langchain_core.messages import HumanMessage
-from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph
 
-from src.schemas.state import AgentState
-from src.agents.analyst import generate, critique, execute, check_execution, should_continue
+from src.agents.analyst import (
+    check_execution,
+    critique,
+    execute,
+    generate,
+    should_continue,
+)
+from src.agents.fiscal import (
+    check_query_node,
+    generate_query_node,
+    get_schema_node,
+    list_tables_node,
+)
 from src.agents.guardrail import guardrail_input, guardrail_output
 from src.agents.planner import planner
+from src.schemas.state import AgentState
 
-# Import new Fiscal Agent nodes
-from src.agents.fiscal import list_tables_node, get_schema_node, generate_query_node, check_query_node
+logger = logging.getLogger(__name__)
 
-def check_guardrail(state: AgentState):
+
+def check_guardrail(state: AgentState) -> str:
+    """
+    Route based on guardrail verdict.
+    
+    Returns:
+        "planner" if safe, END if blocked.
+    """
     verdict = state.get("guardrail_verdict")
     if verdict == "UNSAFE":
-        print("--- DECISION: BLOCKED BY GUARDRAIL ---")
+        logger.debug("DECISION: BLOCKED BY GUARDRAIL")
         return END
     return "planner"
 
-def should_check_sql(state: AgentState):
-    # Logic to decide if we need to check the SQL or if it's failed too many times
-    # For now, we simply always check.
+
+def should_check_sql(state: AgentState) -> str:
+    """
+    Route to SQL validation.
+    
+    Returns:
+        Always "check_sql" for now.
+    """
     return "check_sql"
+
 
 class AuditGraph:
     """
     Main orchestrator for the CivicAudit workflow.
-    Integrates Analyst, Critic, Guardrails, AND Fiscal Agent.
+    
+    Integrates:
+    - Input Guardrail
+    - Planner Agent
+    - Fiscal Agent (SQL Specialist)
+    - Analyst Agent (Python Specialist)
+    - Critic Agent
+    - Output Guardrail
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the audit workflow graph."""
         self.memory = MemorySaver()
         self.graph = self._build_graph()
 
-    def _build_graph(self):
+    def _build_graph(self) -> StateGraph:
+        """
+        Build and compile the workflow graph.
+        
+        Returns:
+            Compiled StateGraph ready for execution.
+        """
         workflow = StateGraph(AgentState)
 
         # --- NODES ---
@@ -76,8 +121,6 @@ class AuditGraph:
         workflow.add_edge("generate_sql", "check_sql")
         
         # Fiscal Agent -> Analyst Agent (Handover valid SQL)
-        # Note: In a real loop we might loop back to generate_sql if check fails,
-        # but check_sql already tries to fix it.
         workflow.add_edge("check_sql", "generate")
 
         # Analyst Agent Loop (Generate Code -> Critic -> Execute)
@@ -94,7 +137,9 @@ class AuditGraph:
 
         # Execute -> Output Guardrail
         workflow.add_conditional_edges(
-            "execute", check_execution, {"generate": "generate", END: "guardrail_output"}
+            "execute",
+            check_execution,
+            {"generate": "generate", END: "guardrail_output"}
         )
 
         # Output -> End
@@ -103,13 +148,22 @@ class AuditGraph:
         return workflow.compile(checkpointer=self.memory)
 
     def run(self, user_question: str, thread_id: Optional[str] = None) -> str:
+        """
+        Execute the audit workflow for a user question.
         
+        Args:
+            user_question: The user's audit question.
+            thread_id: Optional thread ID for conversation continuity.
+        
+        Returns:
+            The final output from the workflow.
+        """
         if not thread_id:
             thread_id = str(uuid.uuid4())
 
         config = {
             "configurable": {"thread_id": thread_id},
-            "recursion_limit": 30 # Increased for deeper pipeline
+            "recursion_limit": 30
         }
 
         inputs = {

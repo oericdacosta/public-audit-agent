@@ -15,11 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create a non-root user and group
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Copy project definition
-COPY pyproject.toml .
+# Copy project definition and lockfile first (better layer caching)
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies using UV directly from pyproject.toml
-RUN uv pip install --system --no-cache .
+# Install dependencies using modern uv sync (creates .venv automatically)
+RUN uv sync --frozen --no-dev
 
 # Copy source code and config
 COPY src/ src/
@@ -41,5 +41,5 @@ EXPOSE 8000
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Default command runs the MCP server with TCP transport
-CMD ["python", "src/mcp/server.py", "--transport", "tcp", "--port", "8000"]
+# Default command runs the MCP server with TCP transport using uv run
+CMD ["uv", "run", "python", "src/mcp/server.py", "--transport", "tcp", "--port", "8000"]

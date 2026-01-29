@@ -13,6 +13,13 @@ Review the generated SQLite query for common pitfalls and fix them.
 3. **Range Logic**: Is `BETWEEN` used correctly (inclusive)?
 4. **Type Safety**: Are strings quoted? (e.g. `exercicio_orcamento = '2024'`)
 5. **Join Logic**: Are the correct columns used for joins?
+6. **LIMIT**: Does the query have a LIMIT clause? (Required for safety)
+7. **Subqueries**: Are correlated subqueries avoided when possible?
+8. **Aggregation Errors**: Is GROUP BY used correctly with aggregates?
+9. **Index Usage**: Are filtered columns indexed? (Check schema context)
+10. **SQLite Specifics**:
+    - No FULL OUTER JOIN (use UNION of LEFT JOINs)
+    - No RIGHT JOIN (swap tables and use LEFT JOIN)
 
 # SECTION: OUTPUT FORMAT
 

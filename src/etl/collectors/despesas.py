@@ -19,17 +19,17 @@ class ExpensesCollector(BaseCollector):
     def run(self, municipio_id: str, year: int) -> int:
         """
         Run the expense collection for a municipality and year.
-        
+
         Returns:
             Total number of records collected.
         """
         total = 0
         logger.info(">>> Starting Despesas (Financial)")
-        
+
         for batch, month_ref in self.fetch_by_month(municipio_id, year):
             saved = self.save(batch, municipio_id, year, month_ref)
             total += saved
-            
+
         logger.info("Despesas completed: %d records.", total)
         return total
 
@@ -38,7 +38,7 @@ class ExpensesCollector(BaseCollector):
     ) -> Iterator[tuple[list[dict[str, Any]], str]]:
         """
         Fetch expense data month by month.
-        
+
         Yields:
             Tuples of (batch_data, month_reference).
         """
@@ -76,18 +76,18 @@ class ExpensesCollector(BaseCollector):
         batch_data: list[dict[str, Any]],
         municipio_id: str,
         year: int,
-        month_ref: str
+        month_ref: str,
     ) -> int:
         """
         Save expense records to the database.
-        
+
         Returns:
             Number of records saved.
         """
         conn = self.db_manager.get_raw_connection()
         cursor = conn.cursor()
         count = 0
-        
+
         try:
             for i, item in enumerate(batch_data):
                 elem = item.get("codigo_elemento_despesa", "0")
@@ -121,9 +121,9 @@ class ExpensesCollector(BaseCollector):
                     ),
                 )
                 count += 1
-            
+
             conn.commit()
         finally:
             conn.close()
-        
+
         return count

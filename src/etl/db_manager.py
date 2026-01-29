@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """
     Manages SQLite database operations with connection pooling pattern.
-    
+
     Provides methods for schema initialization, query execution,
     and schema introspection.
     """
@@ -33,7 +33,7 @@ class DatabaseManager:
         except KeyError as e:
             raise ConfigurationError(
                 "Missing configuration key",
-                details="'database.path' not found in config.yaml"
+                details="'database.path' not found in config.yaml",
             ) from e
         self._setup_directories()
 
@@ -48,10 +48,10 @@ class DatabaseManager:
     def get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """
         Get a database connection using context manager pattern.
-        
+
         Yields:
             SQLite connection that auto-closes on exit.
-        
+
         Example:
             with db.get_connection() as conn:
                 cursor = conn.cursor()
@@ -66,7 +66,7 @@ class DatabaseManager:
     def get_raw_connection(self) -> sqlite3.Connection:
         """
         Get a raw database connection (caller manages lifecycle).
-        
+
         Returns:
             SQLite connection (must be closed by caller).
         """
@@ -157,13 +157,11 @@ class DatabaseManager:
                 "ON despesas(municipio_id)"
             )
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_desp_data "
-                "ON despesas(mes_referencia)"
+                "CREATE INDEX IF NOT EXISTS idx_desp_data ON despesas(mes_referencia)"
             )
             # Additional indexes for frequently filtered columns
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_desp_funcao "
-                "ON despesas(codigo_funcao)"
+                "CREATE INDEX IF NOT EXISTS idx_desp_funcao ON despesas(codigo_funcao)"
             )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_desp_exercicio "
@@ -194,8 +192,7 @@ class DatabaseManager:
                 /* Metadata: Revenue and Collection table (receita). */
             """)
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rec_municipio "
-                "ON receitas(municipio_id)"
+                "CREATE INDEX IF NOT EXISTS idx_rec_municipio ON receitas(municipio_id)"
             )
             # dditional indexes for frequently filtered columns
             cursor.execute(
@@ -203,8 +200,7 @@ class DatabaseManager:
                 "ON receitas(exercicio_orcamento)"
             )
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rec_mes "
-                "ON receitas(mes_referencia)"
+                "CREATE INDEX IF NOT EXISTS idx_rec_mes ON receitas(mes_referencia)"
             )
             # Composite index for multi-column queries
             cursor.execute(
@@ -230,13 +226,13 @@ class DatabaseManager:
     def execute_query(self, query: str) -> list[dict[str, Any]]:
         """
         Execute a SQL query and return results as list of dicts.
-        
+
         Args:
             query: SQL query to execute.
-        
+
         Returns:
             List of dictionaries representing rows.
-        
+
         Raises:
             DatabaseError: If query execution fails.
         """
@@ -252,7 +248,7 @@ class DatabaseManager:
     def get_all_tables(self) -> list[str]:
         """
         Get list of all table names in the database.
-        
+
         Returns:
             List of table names.
         """
@@ -266,10 +262,10 @@ class DatabaseManager:
     ) -> dict[str, str]:
         """
         Get schema definitions for tables.
-        
+
         Args:
             limit_tables: Optional list of specific tables to fetch.
-        
+
         Returns:
             Dictionary mapping table names to DDL statements.
         """
@@ -277,7 +273,7 @@ class DatabaseManager:
             cursor = conn.cursor()
             query = "SELECT name, sql FROM sqlite_master WHERE type='table'"
             params: list[str] = []
-            
+
             if limit_tables:
                 placeholders = ",".join("?" * len(limit_tables))
                 query += f" AND name IN ({placeholders})"
@@ -289,18 +285,20 @@ class DatabaseManager:
     def search_schema(self, keyword: str) -> dict[str, str]:
         """
         Search table names and schema definitions for a keyword.
-        
+
         Args:
             keyword: Keyword to search for (accent-insensitive).
-        
+
         Returns:
             Dictionary of matching tables and their DDL.
         """
+
         def normalize_text(text: str) -> str:
             if not text:
                 return ""
             return "".join(
-                c for c in unicodedata.normalize("NFD", text)
+                c
+                for c in unicodedata.normalize("NFD", text)
                 if unicodedata.category(c) != "Mn"
             ).lower()
 
@@ -315,8 +313,8 @@ class DatabaseManager:
         for name, sql in all_tables:
             name_norm = normalize_text(name)
             sql_norm = normalize_text(sql) if sql else ""
-            
+
             if keyword_norm in name_norm or keyword_norm in sql_norm:
                 results[name] = sql
-                
+
         return results

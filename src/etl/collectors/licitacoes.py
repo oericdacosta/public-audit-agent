@@ -20,17 +20,17 @@ class TendersCollector(BaseCollector):
     def run(self, municipio_id: str, year: int) -> int:
         """
         Run the tender collection for a municipality and year.
-        
+
         Returns:
             Total number of records collected.
         """
         total = 0
         logger.info(">>> Starting Licitações (Data Set)")
-        
+
         for batch in self.fetch_by_month(municipio_id, year):
             saved = self.save(batch, municipio_id, year)
             total += saved
-            
+
         logger.info("Licitações completed: %d records.", total)
         return total
 
@@ -39,7 +39,7 @@ class TendersCollector(BaseCollector):
     ) -> Iterator[list[dict[str, Any]]]:
         """
         Fetch tender data month by month.
-        
+
         Yields:
             Lists of tender records for each month.
         """
@@ -65,21 +65,18 @@ class TendersCollector(BaseCollector):
                     yield data.get("data", [])
 
     def save(
-        self,
-        batch_data: list[dict[str, Any]],
-        municipio_id: str,
-        year: int
+        self, batch_data: list[dict[str, Any]], municipio_id: str, year: int
     ) -> int:
         """
         Save tender records to the database.
-        
+
         Returns:
             Number of records saved.
         """
         conn = self.db_manager.get_raw_connection()
         cursor = conn.cursor()
         count = 0
-        
+
         try:
             for item in batch_data:
                 lic_id = f"{municipio_id}_{item.get('numero_licitacao')}_{year}"
@@ -87,8 +84,8 @@ class TendersCollector(BaseCollector):
                     """
                     INSERT OR REPLACE INTO licitacoes (
                         id, municipio_id, numero_licitacao, numero_processo,
-                        objeto_licitacao, modalidade_licitacao, 
-                        data_realizacao_licitacao, valor_estimado, 
+                        objeto_licitacao, modalidade_licitacao,
+                        data_realizacao_licitacao, valor_estimado,
                         situacao_licitacao, exercicio_orcamento, raw_data
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
@@ -107,9 +104,9 @@ class TendersCollector(BaseCollector):
                     ),
                 )
                 count += 1
-            
+
             conn.commit()
         finally:
             conn.close()
-        
+
         return count

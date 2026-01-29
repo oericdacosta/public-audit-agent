@@ -1,0 +1,47 @@
+repos:
+  # ─────────────────────────────────────────────────────────────
+  # Ruff - Linting e Formatting ultra-rápido
+  # ─────────────────────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ─────────────────────────────────────────────────────────────
+  # Type Checking com MyPy
+  # ─────────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - types-PyYAML
+          - types-requests
+        args: [--ignore-missing-imports]
+        files: ^src/
+
+  # ─────────────────────────────────────────────────────────────
+  # Validações Gerais
+  # ─────────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: detect-private-key
+      - id: check-merge-conflict
+
+  # ─────────────────────────────────────────────────────────────
+  # Detecção de Secrets
+  # ─────────────────────────────────────────────────────────────
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json

@@ -53,7 +53,9 @@ test-fast:
 # Security & Quality
 # ──────────────────────────────────────────────────────────
 security:
-	uv run pip-audit --requirement requirements.txt || true
+	uv export --no-dev > requirements.txt
+	uv run pip-audit --requirement requirements.txt
+	rm requirements.txt
 
 check: lint typecheck test
 	@echo "✅ All checks passed!"

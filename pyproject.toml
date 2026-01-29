@@ -32,6 +32,7 @@ dev = [
     "types-PyYAML>=6.0.0",
     "types-requests>=2.32.0",
     "pip-audit>=2.7.0",
+    "bandit>=1.7.0",
 ]
 
 [tool.ruff]
@@ -46,10 +47,12 @@ ignore = []
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
-addopts = "-v --cov=src --cov-report=term-missing --cov-report=xml"
+addopts = "-v --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=30"
 
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+disallow_untyped_defs = true
+check_untyped_defs = true

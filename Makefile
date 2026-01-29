@@ -26,7 +26,7 @@ logs:
 # Initialize the database schema (Creates tables with metadata)
 init-db:
 	@echo "Initializing database schema..."
-	$(COMPOSE) exec $(SERVICE_NAME) python -c "from src.etl.database import DatabaseManager; DatabaseManager().initialize_schema(); print('Database schema initialized!')"
+	$(COMPOSE) exec $(SERVICE_NAME) python -c "from src.etl.db_manager import DatabaseManager; DatabaseManager().initialize_schema(); print('Database schema initialized!')"
 
 # Open a shell inside the container
 shell:

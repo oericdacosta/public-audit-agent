@@ -57,9 +57,16 @@ def load_prompt_components(*components: str) -> str:
     parts: list[str] = []
     
     for comp in components:
+        cache_key = f"components/{comp}"
+        if cache_key in _prompt_cache:
+            parts.append(_prompt_cache[cache_key])
+            continue
+            
         path = prompts_dir / comp
         if path.exists():
-            parts.append(path.read_text(encoding="utf-8"))
+            content = path.read_text(encoding="utf-8")
+            _prompt_cache[cache_key] = content
+            parts.append(content)
     
     return "\n\n".join(parts)
 

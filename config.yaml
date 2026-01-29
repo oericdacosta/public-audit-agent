@@ -21,12 +21,15 @@ agent:
   analyst_model: "gpt-4o"
   critic_model: "gpt-4o-mini"
   fiscal_model: "gpt-4o"  # SQL specialist model
+  planner_model: "gpt-4o"  # Planning agent model
+  guardrail_model: "gpt-4o-mini"  # Safety check model (cost-effective)
   max_retries: 3
   recursion_limit: 30  # Max workflow iterations
 
 # Database Configuration
 database:
   path: "data/civic_audit.db"
+  query_timeout: 30  # Query timeout in seconds
 
 # Sandbox Configuration
 sandbox:

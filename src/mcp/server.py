@@ -8,8 +8,9 @@ import asyncio
 from typing import Any, Callable, Optional
 
 import mcp.types as types
-from mcp.server import Server
 from mcp.server.stdio import stdio_server
+
+from mcp.server import Server
 
 # Initialize low-level server
 app = Server("civic-audit-mcp")
@@ -30,17 +31,18 @@ def register_tool(
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator to register a function as an MCP tool.
-    
+
     Args:
         name: Tool name for invocation.
         description: Human-readable description.
         input_schema: JSON Schema for input parameters.
         examples: Optional usage examples.
         defer_loading: If True, tool is hidden from initial context.
-    
+
     Returns:
         Decorator function.
     """
+
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         _TOOL_HANDLERS[name] = func
 
@@ -50,17 +52,13 @@ def register_tool(
 
         # Create Tool object
         tool_obj = types.Tool(
-            name=name, 
-            description=description, 
-            inputSchema=input_schema
+            name=name, description=description, inputSchema=input_schema
         )
-        
+
         # Register with metadata
-        _REGISTRY.append({
-            "tool": tool_obj,
-            "defer": defer_loading,
-            "examples": examples
-        })
+        _REGISTRY.append(
+            {"tool": tool_obj, "defer": defer_loading, "examples": examples}
+        )
         return func
 
     return decorator
@@ -69,21 +67,18 @@ def register_tool(
 @app.list_tools()
 async def list_tools() -> list[types.Tool]:
     """Returns only non-deferred tools to save context window."""
-    return [
-        entry["tool"] for entry in _REGISTRY 
-        if not entry["defer"]
-    ]
+    return [entry["tool"] for entry in _REGISTRY if not entry["defer"]]
 
 
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> list[types.TextContent]:
     """
     Handle tool invocation requests.
-    
+
     Args:
         name: Name of the tool to call.
         arguments: Tool arguments.
-    
+
     Returns:
         List containing the tool result as TextContent.
     """
@@ -101,59 +96,82 @@ async def call_tool(name: str, arguments: Any) -> list[types.TextContent]:
 # --- TOOL DEFINITIONS ---
 # Lazy import to avoid circular dependencies and speed up startup
 
+
 def _get_database_tools() -> tuple:
     """Lazy load database tools."""
     from src.tools.sql import (
         describe_table as tool_describe_table,
+    )
+    from src.tools.sql import (
         list_tables as tool_list_tables,
+    )
+    from src.tools.sql import (
         query_sql as tool_query_sql,
+    )
+    from src.tools.sql import (
         search_definitions as tool_search_definitions,
     )
-    return tool_query_sql, tool_describe_table, tool_search_definitions, tool_list_tables
+
+    return (
+        tool_query_sql,
+        tool_describe_table,
+        tool_search_definitions,
+        tool_list_tables,
+    )
 
 
 @register_tool(
     name="query_sql",
     description=(
         "Executes a read-only SQL query against the database. "
-        "Pay attention to data types: quote TEXT values (e.g. '2024') as seen in the schema."
+        "Pay attention to data types: quote TEXT values (e.g. '2024') "
+        "as seen in the schema."
     ),
     input_schema={
         "type": "object",
         "properties": {
-            "sql_query": {"type": "string", "description": "The SQL query to execute"}
+            "sql_query": {
+                "type": "string",
+                "description": "The SQL query to execute",
+            }
         },
         "required": ["sql_query"],
     },
     examples=[
         "SELECT * FROM licitacoes WHERE valor_estimado > 10000 LIMIT 5",
-        "SELECT sum(valor_pago) FROM despesas WHERE mes_referencia = '202401' AND codigo_funcao = '12'",
+        (
+            "SELECT sum(valor_pago) FROM despesas "
+            "WHERE mes_referencia = '202401' AND codigo_funcao = '12'"
+        ),
     ],
-    defer_loading=True
+    defer_loading=True,
 )
 def query_sql(sql_query: str) -> str:
     """Execute a SQL query via the database tools."""
     tool_query_sql, _, _, _ = _get_database_tools()
-    return tool_query_sql(sql_query)
+    result = tool_query_sql(sql_query)
+    return str(result)
 
 
 @register_tool(
     name="describe_table",
     description=(
         "Returns the DDL schema for a specific table. "
-        "IMPORTANT: Read the DDL comments to find numeric codes for categories (e.g. 10: Saúde)."
+        "IMPORTANT: Read the DDL comments to find numeric codes for categories "
+        "(e.g. 10: Saúde)."
     ),
     input_schema={
         "type": "object",
         "properties": {"table_name": {"type": "string"}},
         "required": ["table_name"],
     },
-    defer_loading=True
+    defer_loading=True,
 )
 def describe_table(table_name: str) -> str:
     """Get table schema via the database tools."""
     _, tool_describe_table, _, _ = _get_database_tools()
-    return tool_describe_table(table_name)
+    result = tool_describe_table(table_name)
+    return str(result)
 
 
 @register_tool(
@@ -171,17 +189,20 @@ def describe_table(table_name: str) -> str:
         "required": ["query"],
     },
     examples=["educacao", "saude", "pagamento"],
-    defer_loading=False
+    defer_loading=False,
 )
 def search_definitions(query: str) -> str:
     """Search table definitions via the database tools."""
     _, _, tool_search_definitions, _ = _get_database_tools()
-    return tool_search_definitions(query)
+    result = tool_search_definitions(query)
+    return str(result)
 
 
 @register_tool(
     name="search_tools",
-    description="Searches for available capabilities/tools. Use this to find deferred tools.",
+    description=(
+        "Searches for available capabilities/tools. Use this to find deferred tools."
+    ),
     input_schema={
         "type": "object",
         "properties": {
@@ -192,16 +213,19 @@ def search_definitions(query: str) -> str:
         },
         "required": ["query"],
     },
-    defer_loading=False
+    defer_loading=False,
 )
 def search_tools(query: str) -> str:
     """Search available tools by keyword."""
     query_lower = query.lower()
     matches: list[str] = []
-    
+
     for entry in _REGISTRY:
         t = entry["tool"]
-        if query_lower in t.name.lower() or query_lower in (t.description or "").lower():
+        if (
+            query_lower in t.name.lower()
+            or query_lower in (t.description or "").lower()
+        ):
             status = "(Deferred)" if entry["defer"] else "(Active)"
             matches.append(f"Tool: {t.name} {status}\nDescription: {t.description}")
 
@@ -217,17 +241,18 @@ def search_tools(query: str) -> str:
         "type": "object",
         "properties": {},
     },
-    defer_loading=True
+    defer_loading=True,
 )
 def list_tables() -> str:
     """List database tables via the database tools."""
     _, _, _, tool_list_tables = _get_database_tools()
-    return tool_list_tables()
+    result = tool_list_tables()
+    return str(result)
 
 
 def main() -> None:
     """Run the MCP server."""
-    asyncio.run(stdio_server(app))
+    asyncio.run(stdio_server(app))  # type: ignore
 
 
 if __name__ == "__main__":

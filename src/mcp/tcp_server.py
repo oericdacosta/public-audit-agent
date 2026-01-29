@@ -25,14 +25,13 @@ TOOL_MAP: dict[str, Callable[..., Any]] = {
 
 
 async def handle_client(
-    reader: asyncio.StreamReader,
-    writer: asyncio.StreamWriter
+    reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 ) -> None:
     """
     Handle a single TCP client connection.
-    
+
     Implements a simple JSON-RPC style protocol for the sandbox shim.
-    
+
     Args:
         reader: Stream reader for incoming data.
         writer: Stream writer for outgoing data.
@@ -117,10 +116,10 @@ async def handle_client(
         await writer.wait_closed()
 
 
-async def start_tcp_server(host: str = "0.0.0.0", port: int = 8000) -> None:
+async def start_tcp_server(host: str = "0.0.0.0", port: int = 8000) -> None:  # nosec B104
     """
     Start the TCP server.
-    
+
     Args:
         host: Host address to bind to.
         port: Port number to listen on.
@@ -136,10 +135,10 @@ async def start_tcp_server(host: str = "0.0.0.0", port: int = 8000) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     parser = argparse.ArgumentParser(description="CivicAudit MCP TCP Server")
     parser.add_argument("--port", type=int, default=8000, help="Port to listen on")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")  # nosec B104
     args = parser.parse_args()
 
     try:

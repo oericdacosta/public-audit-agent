@@ -9,7 +9,6 @@ import logging
 import os
 import tarfile
 from pathlib import Path
-from typing import Optional
 
 import docker
 
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 class DockerSandbox:
     """
     Executes Python code in ephemeral Docker containers.
-    
+
     Provides isolation for running untrusted code with
     network access to the MCP server.
     """
@@ -35,7 +34,7 @@ class DockerSandbox:
         except KeyError as e:
             raise ConfigurationError(
                 "Missing configuration key",
-                details="'sandbox.image' not found in config.yaml"
+                details="'sandbox.image' not found in config.yaml",
             ) from e
 
         self.client = docker.from_env()
@@ -52,11 +51,11 @@ class DockerSandbox:
     def execute(self, code: str, timeout: int = 30) -> str:
         """
         Execute Python code in an ephemeral Docker container.
-        
+
         Args:
             code: Python code to execute.
             timeout: Maximum execution time in seconds.
-        
+
         Returns:
             Output from code execution or error message.
         """
@@ -73,7 +72,7 @@ class DockerSandbox:
 
             create_kwargs: dict = {
                 "image": self.image,
-                "command": ["python", "/tmp/script.py"],
+                "command": ["python", "/tmp/script.py"],  # nosec B108
                 "environment": {"MCP_HOST": mcp_host, "MCP_PORT": mcp_port},
                 "mem_limit": "512m",
                 "detach": True,
@@ -97,10 +96,10 @@ class DockerSandbox:
                     tar.addfile(tarinfo, io.BytesIO(tar_data))
                 tar_stream.seek(0)
 
-                container.put_archive("/tmp", tar_stream)
+                container.put_archive("/tmp", tar_stream)  # nosec B108
                 container.start()
                 container.wait(timeout=timeout)
-                logs = container.logs()
+                logs: bytes = container.logs()
 
                 return logs.decode("utf-8")
 

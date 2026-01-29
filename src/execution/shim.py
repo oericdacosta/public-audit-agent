@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import socket
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, cast
 
 # Configuration (Injected or Default)
 MCP_HOST = os.environ.get("MCP_HOST", "host.docker.internal")
@@ -24,29 +24,23 @@ logger = logging.getLogger(__name__)
 
 
 def _rpc_call(
-    method: str,
-    params: Optional[dict[str, Any]] = None,
-    msg_id: int = 1
+    method: str, params: Optional[dict[str, Any]] = None, msg_id: int = 1
 ) -> dict[str, Any]:
     """
     Send a JSON-RPC request over a TCP socket and wait for response.
-    
+
     Args:
         method: RPC method name.
         params: Optional method parameters.
         msg_id: Message ID for request tracking.
-    
+
     Returns:
         Parsed JSON response dictionary.
-    
+
     Raises:
         Exception: If connection fails or response is invalid.
     """
-    payload: dict[str, Any] = {
-        "jsonrpc": "2.0",
-        "method": method,
-        "id": msg_id
-    }
+    payload: dict[str, Any] = {"jsonrpc": "2.0", "method": method, "id": msg_id}
     if params:
         payload["params"] = params
 
@@ -61,7 +55,7 @@ def _rpc_call(
             if not response_line:
                 raise Exception("Server closed connection without response")
 
-            return json.loads(response_line)
+            return json.loads(response_line)  # type: ignore
 
     except ConnectionRefusedError as e:
         raise Exception(
@@ -88,22 +82,20 @@ def _initialize_session() -> None:
         pass
 
 
-def query_sql(sql_query: str) -> Union[list[dict[str, Any]], str]:
+def query_sql(sql_query: str) -> Union[list[dict[str, Any]], str, dict[str, Any]]:
     """
     Execute a SQL query via the MCP Server.
-    
+
     Args:
         sql_query: SQL query to execute.
-    
+
     Returns:
-        Query results as list of dicts, or error message string.
+        Query results as list of dicts, error message string, or raw response dict.
     """
     _initialize_session()
-    
+
     response = _rpc_call(
-        "tools/call",
-        {"name": "query_sql", "arguments": {"sql_query": sql_query}},
-        2
+        "tools/call", {"name": "query_sql", "arguments": {"sql_query": sql_query}}, 2
     )
 
     if "error" in response:
@@ -112,7 +104,8 @@ def query_sql(sql_query: str) -> Union[list[dict[str, Any]], str]:
     if "result" in response:
         res = response["result"]
         if "structuredContent" in res:
-            return res["structuredContent"].get("result", [])
+            result = res["structuredContent"].get("result", [])
+            return cast(list[dict[str, Any]], result)
 
         if "content" in res:
             items: list[Any] = []
@@ -135,15 +128,11 @@ def query_sql(sql_query: str) -> Union[list[dict[str, Any]], str]:
 def list_tables() -> list[str]:
     """
     List all tables in the database.
-    
+
     Returns:
         List of table names.
     """
-    response = _rpc_call(
-        "tools/call",
-        {"name": "list_tables", "arguments": {}},
-        2
-    )
+    response = _rpc_call("tools/call", {"name": "list_tables", "arguments": {}}, 2)
 
     if "error" in response:
         raise Exception(f"RPC Error calling list_tables: {response['error']}")
@@ -151,7 +140,8 @@ def list_tables() -> list[str]:
     if "result" in response:
         res = response["result"]
         if "structuredContent" in res:
-            return res["structuredContent"].get("result", [])
+            result = res["structuredContent"].get("result", [])
+            return cast(list[str], result)
         if "content" in res:
             items: list[str] = []
             for content in res.get("content", []):
@@ -168,10 +158,10 @@ def list_tables() -> list[str]:
 def describe_table(table_name: str) -> str:
     """
     Get schema DDL for a table.
-    
+
     Args:
         table_name: Name of the table to describe.
-    
+
     Returns:
         DDL statement for the table.
     """
@@ -184,27 +174,26 @@ def describe_table(table_name: str) -> str:
     if "result" in response:
         res = response["result"]
         if "structuredContent" in res:
-            return res["structuredContent"].get("result", "")
+            result = res["structuredContent"].get("result", "")
+            return cast(str, result)
         for content in res.get("content", []):
             if content["type"] == "text":
-                return content["text"]
+                return cast(str, content["text"])
     return ""
 
 
 def search_definitions(query: str) -> Union[list[dict[str, str]], str]:
     """
     Search for table definitions matching a keyword.
-    
+
     Args:
         query: Keyword to search for.
-    
+
     Returns:
         Matching definitions or empty string.
     """
     response = _rpc_call(
-        "tools/call",
-        {"name": "search_definitions", "arguments": {"query": query}},
-        2
+        "tools/call", {"name": "search_definitions", "arguments": {"query": query}}, 2
     )
 
     if "result" in response:
@@ -212,7 +201,7 @@ def search_definitions(query: str) -> Union[list[dict[str, str]], str]:
         for content in res.get("content", []):
             if content["type"] == "text":
                 try:
-                    return json.loads(content["text"])
+                    return cast(list[dict[str, str]], json.loads(content["text"]))
                 except Exception:
-                    return content["text"]
+                    return cast(str, content["text"])
     return ""

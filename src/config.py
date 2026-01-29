@@ -6,7 +6,7 @@ Loads and provides access to application configuration from config.yaml.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -22,27 +22,23 @@ _config: dict[str, Any] = {}
 def load_config() -> dict[str, Any]:
     """
     Load the YAML configuration file from the project root.
-    
+
     Returns:
         Configuration dictionary.
-    
+
     Raises:
         ConfigurationError: If the config file is not found or invalid.
     """
     if not CONFIG_PATH.exists():
         raise ConfigurationError(
-            "Configuration file not found",
-            details=str(CONFIG_PATH)
+            "Configuration file not found", details=str(CONFIG_PATH)
         )
 
     try:
         content = CONFIG_PATH.read_text(encoding="utf-8")
-        return yaml.safe_load(content)
+        return cast(dict[str, Any], yaml.safe_load(content))
     except yaml.YAMLError as e:
-        raise ConfigurationError(
-            "Invalid YAML configuration",
-            details=str(e)
-        ) from e
+        raise ConfigurationError("Invalid YAML configuration", details=str(e)) from e
 
 
 def _initialize_config() -> None:
@@ -58,7 +54,7 @@ def _initialize_config() -> None:
 def get_settings() -> dict[str, Any]:
     """
     Get the current application settings.
-    
+
     Returns:
         Configuration dictionary (may be empty if config failed to load).
     """
@@ -68,7 +64,7 @@ def get_settings() -> dict[str, Any]:
 def reload_config() -> dict[str, Any]:
     """
     Reload configuration from disk.
-    
+
     Returns:
         Updated configuration dictionary.
     """

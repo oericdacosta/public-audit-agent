@@ -1,5 +1,12 @@
+"""
+Revenue (Receitas) Collector.
+
+Collects public revenue data from the TCE API.
+"""
+
 import json
 import logging
+from typing import Any, Iterator
 
 from .base import BaseCollector
 
@@ -7,17 +14,34 @@ logger = logging.getLogger(__name__)
 
 
 class RevenueCollector(BaseCollector):
-    def run(self, municipio_id, year):
+    """Collector for public revenue (receita) data."""
+
+    def run(self, municipio_id: str, year: int) -> int:
+        """
+        Run the revenue collection for a municipality and year.
+        
+        Returns:
+            Total number of records collected.
+        """
         total = 0
         logger.info(">>> Starting Receitas")
+        
         for batch, month_ref in self.fetch_by_month(municipio_id, year):
             saved = self.save(batch, municipio_id, year, month_ref)
             total += saved
-            print(f"Receitas: accumulated {total} records...", end="\r")
-        print(f"\nReceitas completed: {total} records.")
+            
+        logger.info("Receitas completed: %d records.", total)
         return total
 
-    def fetch_by_month(self, municipio_id, year):
+    def fetch_by_month(
+        self, municipio_id: str, year: int
+    ) -> Iterator[tuple[list[dict[str, Any]], str]]:
+        """
+        Fetch revenue data month by month.
+        
+        Yields:
+            Tuples of (batch_data, month_reference).
+        """
         for month in range(1, 13):
             month_ref = f"{year}{month:02d}"
             params = {
@@ -27,7 +51,7 @@ class RevenueCollector(BaseCollector):
             }
             url = f"{self.client.SIM_BASE_URL}/balancete_receita_orcamentaria.json"
 
-            logger.info(f"Fetching Receitas: {month_ref}")
+            logger.info("Fetching Receitas: %s", month_ref)
             data = self.client.fetch_json(url, params)
 
             if data:
@@ -47,38 +71,55 @@ class RevenueCollector(BaseCollector):
                     elif isinstance(content, dict):
                         yield ([content], month_ref)
 
-    def save(self, batch_data, municipio_id, year, month_ref):
-        conn = self.db_manager.get_connection()
+    def save(
+        self,
+        batch_data: list[dict[str, Any]],
+        municipio_id: str,
+        year: int,
+        month_ref: str
+    ) -> int:
+        """
+        Save revenue records to the database.
+        
+        Returns:
+            Number of records saved.
+        """
+        conn = self.db_manager.get_raw_connection()
         cursor = conn.cursor()
         count = 0
-        for i, item in enumerate(batch_data):
-            rec_code = item.get("codigo_receita", "0")
-            val = item.get("valor_arrecadado_no_mes", "0")
-            rec_id = f"{municipio_id}_{month_ref}_{rec_code}_{val}_{i}"
+        
+        try:
+            for i, item in enumerate(batch_data):
+                rec_code = item.get("codigo_receita", "0")
+                val = item.get("valor_arrecadado_no_mes", "0")
+                rec_id = f"{municipio_id}_{month_ref}_{rec_code}_{val}_{i}"
 
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO receitas (
-                    id, municipio_id, exercicio_orcamento, mes_referencia,
-                    codigo_orgao, codigo_unidade_orcamentaria, codigo_receita,
-                    descricao_receita, valor_orcado, valor_arrecadado, raw_data
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    rec_id,
-                    municipio_id,
-                    str(year),
-                    month_ref,
-                    item.get("codigo_orgao"),
-                    item.get("codigo_unidade_orcamentaria"),
-                    item.get("codigo_receita"),
-                    item.get("descricao_receita"),
-                    item.get("valor_previsto_arrecadacao"),
-                    item.get("valor_arrecadado_no_mes"),
-                    json.dumps(item),
-                ),
-            )
-            count += 1
-        conn.commit()
-        conn.close()
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO receitas (
+                        id, municipio_id, exercicio_orcamento, mes_referencia,
+                        codigo_orgao, codigo_unidade_orcamentaria, codigo_receita,
+                        descricao_receita, valor_orcado, valor_arrecadado, raw_data
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        rec_id,
+                        municipio_id,
+                        str(year),
+                        month_ref,
+                        item.get("codigo_orgao"),
+                        item.get("codigo_unidade_orcamentaria"),
+                        item.get("codigo_receita"),
+                        item.get("descricao_receita"),
+                        item.get("valor_previsto_arrecadacao"),
+                        item.get("valor_arrecadado_no_mes"),
+                        json.dumps(item),
+                    ),
+                )
+                count += 1
+            
+            conn.commit()
+        finally:
+            conn.close()
+        
         return count

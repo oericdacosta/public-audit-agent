@@ -1,14 +1,22 @@
+"""
+Fiscal Agent Node Functions.
 
-import os
-from typing import Dict, Any, List
+SQL specialist agent for generating and validating database queries.
+"""
+
+import logging
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from langchain_community.callbacks import get_openai_callback
 
 from src.schemas.state import AgentState
-from src.tools.database import query_sql, list_tables, describe_table
+from src.tools.database import describe_table, list_tables
+from src.utils.logger import observe_node
+
+logger = logging.getLogger(__name__)
+
 
 # --- SYSTEM PROMPTS ---
 
@@ -47,27 +55,36 @@ If the query is VALID, output: VALID
 If the query is INVALID, output the CORRECTED query (JUST the SQL).
 """
 
-from src.utils.logger import observe_node
 
-# --- NODES ---
+# --- NODE FUNCTIONS ---
+
 
 @observe_node(event_type="TOOL_CALL")
-def list_tables_node(state: AgentState):
-    print("--- FISCAL: LIST TABLES ---")
+def list_tables_node(state: AgentState) -> dict[str, Any]:
+    """
+    List all available database tables.
+    
+    Returns:
+        Updated state with table list message.
+    """
+    logger.debug("FISCAL: LIST TABLES")
     tables = list_tables()
     return {"messages": [HumanMessage(content=f"Available tables: {tables}")]}
 
+
 @observe_node(event_type="TOOL_CALL")
-def get_schema_node(state: AgentState):
-    print("--- FISCAL: GET SCHEMA ---")
-    messages = state["messages"]
+def get_schema_node(state: AgentState) -> dict[str, Any]:
+    """
+    Fetch schema information for relevant tables.
     
-    # Simple heuristic: Get schema for all main tables to ensure context.
-    # In a larger DB, we would use an LLM to decide which tables to fetch.
-    # For now, we fetch 'licitacoes', 'despesas', 'receitas' if present.
+    Returns:
+        Updated state with schema context message.
+    """
+    logger.debug("FISCAL: GET SCHEMA")
     
+    # Get schema for main tables to ensure context
     target_tables = ["licitacoes", "despesas", "receitas"]
-    schemas = []
+    schemas: list[str] = []
     
     for t in target_tables:
         s = describe_table(t)
@@ -77,9 +94,16 @@ def get_schema_node(state: AgentState):
     schema_text = "\n\n".join(schemas)
     return {"messages": [HumanMessage(content=f"Schema Context:\n{schema_text}")]}
 
+
 @observe_node(event_type="THOUGHT")
-def generate_query_node(state: AgentState):
-    print("--- FISCAL: GENERATE SQL ---")
+def generate_query_node(state: AgentState) -> dict[str, str]:
+    """
+    Generate SQL query based on user question and schema context.
+    
+    Returns:
+        Updated state with generated SQL query.
+    """
+    logger.debug("FISCAL: GENERATE SQL")
     messages = state["messages"]
     
     # Extract user question and schema context from history
@@ -90,8 +114,6 @@ def generate_query_node(state: AgentState):
         if isinstance(m, HumanMessage):
             if "Schema Context:" in m.content:
                 schema_context = m.content
-            # The first human message is usually the user question, 
-            # but we can look for the last one that is NOT the schema or table list.
             elif "Available tables:" not in m.content:
                 user_question = m.content
 
@@ -108,13 +130,20 @@ def generate_query_node(state: AgentState):
     })
     
     sql_query = response.content.replace("```sql", "").replace("```", "").strip()
-    print(f"Generated SQL: {sql_query}")
+    logger.debug("Generated SQL: %s", sql_query)
     
     return {"sql_query": sql_query}
 
+
 @observe_node(event_type="THOUGHT")
-def check_query_node(state: AgentState):
-    print("--- FISCAL: CHECK SQL ---")
+def check_query_node(state: AgentState) -> dict[str, str]:
+    """
+    Validate and potentially correct the generated SQL query.
+    
+    Returns:
+        Updated state with validated/corrected SQL query.
+    """
+    logger.debug("FISCAL: CHECK SQL")
     sql_query = state["sql_query"]
     messages = state["messages"]
     
@@ -137,10 +166,10 @@ def check_query_node(state: AgentState):
     result = response.content.strip()
     
     if result == "VALID":
-        print("SQL Verdict: VALID")
+        logger.debug("SQL Verdict: VALID")
         return {"sql_query": sql_query}
-    else:
-        # The output is the corrected query
-        corrected = result.replace("```sql", "").replace("```", "").strip()
-        print(f"SQL Verdict: FIXED -> {corrected}")
-        return {"sql_query": corrected}
+    
+    # The output is the corrected query
+    corrected = result.replace("```sql", "").replace("```", "").strip()
+    logger.debug("SQL Verdict: FIXED -> %s", corrected)
+    return {"sql_query": corrected}

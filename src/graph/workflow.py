@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 def check_guardrail(state: AgentState) -> str:
     """
     Route based on guardrail verdict.
-    
+
     Returns:
         "planner" if safe, END if blocked.
     """
@@ -49,7 +49,7 @@ def check_guardrail(state: AgentState) -> str:
 def should_check_sql(state: AgentState) -> str:
     """
     Route to SQL validation.
-    
+
     Returns:
         Always "check_sql" for now.
     """
@@ -59,7 +59,7 @@ def should_check_sql(state: AgentState) -> str:
 class AuditGraph:
     """
     Main orchestrator for the CivicAudit workflow.
-    
+
     Integrates:
     - Input Guardrail
     - Planner Agent
@@ -77,7 +77,7 @@ class AuditGraph:
     def _build_graph(self) -> StateGraph:
         """
         Build and compile the workflow graph.
-        
+
         Returns:
             Compiled StateGraph ready for execution.
         """
@@ -86,13 +86,13 @@ class AuditGraph:
         # --- NODES ---
         workflow.add_node("guardrail_input", guardrail_input)
         workflow.add_node("planner", planner)
-        
+
         # Fiscal Agent Nodes (SQL Specialist)
         workflow.add_node("list_tables", list_tables_node)
         workflow.add_node("get_schema", get_schema_node)
         workflow.add_node("generate_sql", generate_query_node)
         workflow.add_node("check_sql", check_query_node)
-        
+
         # Analyst Agent Nodes (Python Specialist)
         workflow.add_node("generate", generate)
         workflow.add_node("critic", critique)
@@ -100,18 +100,13 @@ class AuditGraph:
         workflow.add_node("guardrail_output", guardrail_output)
 
         # --- EDGES ---
-        
+
         # Entry Point
         workflow.set_entry_point("guardrail_input")
 
         # Guardrail -> Planner
         workflow.add_conditional_edges(
-            "guardrail_input",
-            check_guardrail,
-            {
-                "planner": "planner",
-                END: END
-            }
+            "guardrail_input", check_guardrail, {"planner": "planner", END: END}
         )
 
         # Planner -> Fiscal Agent Pipeline
@@ -119,7 +114,7 @@ class AuditGraph:
         workflow.add_edge("list_tables", "get_schema")
         workflow.add_edge("get_schema", "generate_sql")
         workflow.add_edge("generate_sql", "check_sql")
-        
+
         # Fiscal Agent -> Analyst Agent (Handover valid SQL)
         workflow.add_edge("check_sql", "generate")
 
@@ -139,40 +134,38 @@ class AuditGraph:
         workflow.add_conditional_edges(
             "execute",
             check_execution,
-            {"generate": "generate", END: "guardrail_output"}
+            {"generate": "generate", END: "guardrail_output"},
         )
 
         # Output -> End
         workflow.add_edge("guardrail_output", END)
 
-        return workflow.compile(checkpointer=self.memory)
+        return workflow.compile(checkpointer=self.memory)  # type: ignore
 
     def run(self, user_question: str, thread_id: Optional[str] = None) -> str:
         """
         Execute the audit workflow for a user question.
-        
+
         Args:
             user_question: The user's audit question.
             thread_id: Optional thread ID for conversation continuity.
-        
+
         Returns:
             The final output from the workflow.
         """
         if not thread_id:
             thread_id = str(uuid.uuid4())
 
-        config = {
-            "configurable": {"thread_id": thread_id},
-            "recursion_limit": 30
-        }
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 30}
 
         inputs = {
             "messages": [HumanMessage(content=user_question)],
             "iterations": 0,
             "error": None,
             "evaluation": None,
-            "sql_query": None
+            "sql_query": None,
         }
 
-        final_state = self.graph.invoke(inputs, config=config)
-        return final_state.get("output", "No output generated.")
+        final_state = self.graph.invoke(inputs, config=config)  # type: ignore
+        output = final_state.get("output", "No output generated.")
+        return str(output)

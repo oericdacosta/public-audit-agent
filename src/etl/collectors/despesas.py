@@ -8,6 +8,8 @@ import json
 import logging
 from typing import Any, Iterator
 
+from src.etl.endpoints import Endpoint
+
 from .base import BaseCollector
 
 logger = logging.getLogger(__name__)
@@ -49,7 +51,7 @@ class ExpensesCollector(BaseCollector):
                 "exercicio_orcamento": f"{year}00",
                 "data_referencia": month_ref,
             }
-            url = f"{self.client.SIM_BASE_URL}/balancete_despesa_orcamentaria.json"
+            url = self.client.build_url(Endpoint.DESPESAS)
 
             logger.info("Fetching Despesas: %s", month_ref)
             data = self.client.fetch_json(url, params)

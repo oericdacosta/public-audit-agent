@@ -9,6 +9,8 @@ import json
 import logging
 from typing import Any, Iterator
 
+from src.etl.endpoints import Endpoint
+
 from .base import BaseCollector
 
 logger = logging.getLogger(__name__)
@@ -53,7 +55,7 @@ class TendersCollector(BaseCollector):
                 "codigo_municipio": municipio_id,
                 "data_realizacao_autuacao_licitacao": date_range,
             }
-            url = f"{self.client.BASE_URL}/licitacoes"
+            url = self.client.build_url(Endpoint.LICITACOES)
 
             logger.info("Fetching Licitações: %s", date_range)
             data = self.client.fetch_json(url, params)

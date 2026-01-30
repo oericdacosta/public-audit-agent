@@ -14,6 +14,7 @@ import requests
 from ratelimit import limits, sleep_and_retry
 
 from src.config import get_settings
+from src.etl.endpoints import APIBase, Endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,25 @@ class TCEClient:
         """Initialize the TCE client with configured URLs."""
         settings = get_settings()
         tce_config = settings.get("tce", {})
-        self.BASE_URL = tce_config.get("base_url")
-        self.SIM_BASE_URL = tce_config.get("sim_base_url")
+        self.BASE_URL = tce_config.get("base_url", "")
+        self.SIM_BASE_URL = tce_config.get("sim_base_url", "")
+
+    def build_url(self, endpoint: Endpoint) -> str:
+        """
+        Build the full URL for a given endpoint.
+
+        Args:
+            endpoint: The API endpoint enum.
+
+        Returns:
+            Full URL string.
+        """
+        if endpoint.base == APIBase.SIM:
+            base = self.SIM_BASE_URL
+        else:
+            base = self.BASE_URL
+
+        return f"{base.rstrip('/')}{endpoint.path}"
 
     @sleep_and_retry
     @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)

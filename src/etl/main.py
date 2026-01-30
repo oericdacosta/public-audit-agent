@@ -6,7 +6,7 @@ Coordinates the collection of public audit data from TCE APIs.
 
 import argparse
 import logging
-import sqlite3
+import duckdb
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -56,7 +56,7 @@ def get_sync_status(
             )
             row = cursor.fetchone()
             return row[0] if row else None
-    except sqlite3.OperationalError:
+    except (duckdb.Error, duckdb.CatalogException):
         # Table might not exist yet if schema init failed
         return None
 

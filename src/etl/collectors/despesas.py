@@ -59,7 +59,7 @@ class ExpensesCollector(BaseCollector):
                     "data_referencia": month_ref,
                 }
                 url = self.client.build_url(Endpoint.DESPESAS)
-                
+
                 # Submit task
                 future = executor.submit(self.client.fetch_json, url, params)
                 futures[future] = month_ref

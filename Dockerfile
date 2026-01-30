@@ -1,45 +1,52 @@
-FROM python:3.12-slim
+# ============================================================
+# Builder
+# ============================================================
+FROM python:3.12-slim AS builder
 
-# Install UV (The Modern Python Package Manager) - Pinned version for stability
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /bin/uv
 
 WORKDIR /app
 
-# Install system dependencies
-# gcc is needed for some python extensions compilation
+# Instalar dependências de compilação (apenas no builder)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user and group
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-
-# Copy project definition and lockfile first (better layer caching)
+# Copiar apenas arquivos de dependência (melhor cache de camadas)
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies using modern uv sync (creates .venv automatically)
+# Instalar dependências em .venv isolado
 RUN uv sync --frozen --no-dev
 
-# Copy source code and config
+# ============================================================
+# Runtime
+# ============================================================
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /bin/uv
+
+COPY --from=builder /app/.venv /app/.venv
+
 COPY src/ src/
-COPY data/ data/
 COPY config.yaml .
 
-# Create directories for logs and evals, and set ownership
-# We also need to ensure data directory is writable if using SQLite in it
-RUN mkdir -p logs evals data && \
-    chown -R appuser:appuser /app
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && mkdir -p logs data evals \
+    && chown -R appuser:appuser /app
 
-# Switch to non-root user for security
+
 USER appuser
 
-# Expose TCP port
-EXPOSE 8000
-
-# Set Python path to include root
+ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Default command runs the MCP server with TCP transport using uv run
-CMD ["uv", "run", "python", "src/mcp/server.py", "--transport", "tcp", "--port", "8000"]
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import socket; s = socket.socket(); s.connect(('localhost', 8000)); s.close()" || exit 1
+
+CMD ["python", "-m", "src.mcp.tcp_server", "--port", "8000"]

@@ -89,6 +89,11 @@ init-db:
 		DatabaseManager().initialize_schema(); \
 		print('Database schema initialized!')"
 
+etl:
+	@echo "Running ETL process..."
+	@uv run python -m src.etl.main --municipality 162
+	@echo "✅ ETL complete!"
+
 # ──────────────────────────────────────────────────────────
 # Cleanup
 # ──────────────────────────────────────────────────────────

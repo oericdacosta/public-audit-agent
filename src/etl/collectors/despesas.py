@@ -39,39 +39,56 @@ class ExpensesCollector(BaseCollector):
         self, municipio_id: str, year: int
     ) -> Iterator[tuple[list[dict[str, Any]], str]]:
         """
-        Fetch expense data month by month.
+        Fetch expense data month by month in parallel.
 
         Yields:
             Tuples of (batch_data, month_reference).
         """
-        for month in range(1, 13):
-            month_ref = f"{year}{month:02d}"
-            params = {
-                "codigo_municipio": municipio_id,
-                "exercicio_orcamento": f"{year}00",
-                "data_referencia": month_ref,
-            }
-            url = self.client.build_url(Endpoint.DESPESAS)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-            logger.info("Fetching Despesas: %s", month_ref)
-            data = self.client.fetch_json(url, params)
+        months = range(1, 13)
+        futures = {}
 
-            if data:
-                content = None
-                if "rsp" in data and "_content" in data["rsp"]:
-                    content = data["rsp"]["_content"]
-                else:
-                    content = (
-                        data.get("data")
-                        or data.get("rows")
-                        or data.get("balancete_despesa_orcamentaria")
-                    )
+        # Parallelize fetching of 12 months
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            for month in months:
+                month_ref = f"{year}{month:02d}"
+                params = {
+                    "codigo_municipio": municipio_id,
+                    "exercicio_orcamento": f"{year}00",
+                    "data_referencia": month_ref,
+                }
+                url = self.client.build_url(Endpoint.DESPESAS)
+                
+                # Submit task
+                future = executor.submit(self.client.fetch_json, url, params)
+                futures[future] = month_ref
 
-                if content:
-                    if isinstance(content, list):
-                        yield (content, month_ref)
-                    elif isinstance(content, dict):
-                        yield ([content], month_ref)
+            # Process as they complete
+            for future in as_completed(futures):
+                month_ref = futures[future]
+                try:
+                    logger.info("Fetching Despesas: %s", month_ref)
+                    data = future.result()
+
+                    if data:
+                        content = None
+                        if "rsp" in data and "_content" in data["rsp"]:
+                            content = data["rsp"]["_content"]
+                        else:
+                            content = (
+                                data.get("data")
+                                or data.get("rows")
+                                or data.get("balancete_despesa_orcamentaria")
+                            )
+
+                        if content:
+                            if isinstance(content, list):
+                                yield (content, month_ref)
+                            elif isinstance(content, dict):
+                                yield ([content], month_ref)
+                except Exception as e:
+                    logger.error("Failed to fetch Despesas for %s: %s", month_ref, e)
 
     def save(
         self,

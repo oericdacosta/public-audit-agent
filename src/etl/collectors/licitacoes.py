@@ -68,45 +68,46 @@ class TendersCollector(BaseCollector):
         self, batch_data: list[dict[str, Any]], municipio_id: str, year: int
     ) -> int:
         """
-        Save tender records to the database.
+        Save tender records to the database using bulk insert.
 
         Returns:
             Number of records saved.
         """
-        conn = self.db_manager.get_raw_connection()
-        cursor = conn.cursor()
-        count = 0
+        if not batch_data:
+            return 0
 
-        try:
-            for item in batch_data:
-                lic_id = f"{municipio_id}_{item.get('numero_licitacao')}_{year}"
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO licitacoes (
-                        id, municipio_id, numero_licitacao, numero_processo,
-                        objeto_licitacao, modalidade_licitacao,
-                        data_realizacao_licitacao, valor_estimado,
-                        situacao_licitacao, exercicio_orcamento, raw_data
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        lic_id,
-                        municipio_id,
-                        item.get("numero_licitacao"),
-                        item.get("numero_processo_licitatorio"),
-                        item.get("objeto_licitacao"),
-                        item.get("modalidade_licitacao"),
-                        item.get("data_realizacao_licitacao"),
-                        item.get("valor_licitacao"),
-                        item.get("situacao_licitacao"),
-                        str(year),
-                        json.dumps(item),
-                    ),
+        # Transform records for bulk insert
+        records = []
+        for item in batch_data:
+            lic_id = f"{municipio_id}_{item.get('numero_licitacao', 'unknown')}_{year}"
+            records.append(
+                (
+                    lic_id,
+                    municipio_id,
+                    item.get("numero_licitacao"),
+                    item.get("numero_processo_licitatorio"),
+                    item.get("objeto_licitacao"),
+                    item.get("modalidade_licitacao"),
+                    item.get("data_realizacao_licitacao"),
+                    item.get("valor_licitacao"),
+                    item.get("situacao_licitacao"),
+                    str(year),
+                    json.dumps(item),
                 )
-                count += 1
+            )
 
-            conn.commit()
-        finally:
-            conn.close()
+        columns = [
+            "id",
+            "municipio_id",
+            "numero_licitacao",
+            "numero_processo",
+            "objeto_licitacao",
+            "modalidade_licitacao",
+            "data_realizacao_licitacao",
+            "valor_estimado",
+            "situacao_licitacao",
+            "exercicio_orcamento",
+            "raw_data",
+        ]
 
-        return count
+        return self.bulk_insert("licitacoes", columns, records)

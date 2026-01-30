@@ -43,3 +43,31 @@ class BaseCollector(ABC):
             Number of records collected.
         """
         pass
+
+    def bulk_insert(self, table: str, columns: list[str], records: list[tuple]) -> int:
+        """
+        Insert records in bulk using executemany for better performance.
+
+        Args:
+            table: Target table name.
+            columns: List of column names.
+            records: List of tuples with values to insert.
+
+        Returns:
+            Number of records inserted.
+        """
+        if not records:
+            return 0
+
+        placeholders = ", ".join(["?" for _ in columns])
+        column_names = ", ".join(columns)
+
+        with self.db_manager.get_connection() as conn:
+            sql = (
+                f"INSERT OR REPLACE INTO {table} "
+                f"({column_names}) VALUES ({placeholders})"
+            )
+            conn.executemany(sql, records)
+            conn.commit()
+
+        return len(records)

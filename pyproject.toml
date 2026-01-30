@@ -19,6 +19,8 @@ dependencies = [
     "sse-starlette>=3.0.4",
     "uvicorn>=0.40.0",
     "PyYAML>=6.0",
+    "ratelimit>=2.2.1",
+    "pybreaker>=1.2.0",
 ]
 
 [dependency-groups]

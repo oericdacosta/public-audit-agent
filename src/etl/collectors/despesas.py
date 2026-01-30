@@ -79,51 +79,55 @@ class ExpensesCollector(BaseCollector):
         month_ref: str,
     ) -> int:
         """
-        Save expense records to the database.
+        Save expense records to the database using bulk insert.
 
         Returns:
             Number of records saved.
         """
-        conn = self.db_manager.get_raw_connection()
-        cursor = conn.cursor()
-        count = 0
+        if not batch_data:
+            return 0
 
-        try:
-            for i, item in enumerate(batch_data):
-                elem = item.get("codigo_elemento_despesa", "0")
-                val = item.get("valor_pago_no_mes", "0")
-                exp_id = f"{municipio_id}_{month_ref}_{elem}_{val}_{i}"
+        # Transform records for bulk insert
+        records = []
+        for i, item in enumerate(batch_data):
+            elem = item.get("codigo_elemento_despesa", "0")
+            val = item.get("valor_pago_no_mes", "0")
+            exp_id = f"{municipio_id}_{month_ref}_{elem}_{val}_{i}"
 
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO despesas (
-                        id, municipio_id, exercicio_orcamento, mes_referencia,
-                        codigo_orgao, codigo_unidade_orcamentaria, codigo_funcao,
-                        codigo_subfuncao, codigo_programa, codigo_elemento_despesa,
-                        valor_empenhado, valor_liquidado, valor_pago, raw_data
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        exp_id,
-                        municipio_id,
-                        str(year),
-                        month_ref,
-                        item.get("codigo_orgao"),
-                        item.get("codigo_unidade_orcamentaria"),
-                        item.get("codigo_funcao"),
-                        item.get("codigo_subfuncao"),
-                        item.get("codigo_programa"),
-                        item.get("codigo_elemento_despesa"),
-                        item.get("valor_empenhado_no_mes"),
-                        item.get("valor_liquidado_no_mes"),
-                        item.get("valor_pago_no_mes"),
-                        json.dumps(item),
-                    ),
+            records.append(
+                (
+                    exp_id,
+                    municipio_id,
+                    str(year),
+                    month_ref,
+                    item.get("codigo_orgao"),
+                    item.get("codigo_unidade_orcamentaria"),
+                    item.get("codigo_funcao"),
+                    item.get("codigo_subfuncao"),
+                    item.get("codigo_programa"),
+                    item.get("codigo_elemento_despesa"),
+                    item.get("valor_empenhado_no_mes"),
+                    item.get("valor_liquidado_no_mes"),
+                    item.get("valor_pago_no_mes"),
+                    json.dumps(item),
                 )
-                count += 1
+            )
 
-            conn.commit()
-        finally:
-            conn.close()
+        columns = [
+            "id",
+            "municipio_id",
+            "exercicio_orcamento",
+            "mes_referencia",
+            "codigo_orgao",
+            "codigo_unidade_orcamentaria",
+            "codigo_funcao",
+            "codigo_subfuncao",
+            "codigo_programa",
+            "codigo_elemento_despesa",
+            "valor_empenhado",
+            "valor_liquidado",
+            "valor_pago",
+            "raw_data",
+        ]
 
-        return count
+        return self.bulk_insert("despesas", columns, records)

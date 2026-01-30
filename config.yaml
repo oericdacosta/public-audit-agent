@@ -28,7 +28,7 @@ agent:
 
 # Database Configuration
 database:
-  path: "data/civic_audit.db"
+  path: "data/civic_audit.duckdb"
   query_timeout: 30  # Query timeout in seconds
 
 # Sandbox Configuration

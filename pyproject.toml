@@ -21,6 +21,8 @@ dependencies = [
     "PyYAML>=6.0",
     "ratelimit>=2.2.1",
     "pybreaker>=1.2.0",
+    "duckdb>=1.1.0",
+    "dbt-duckdb>=1.8.0",
 ]
 
 [dependency-groups]

@@ -18,7 +18,7 @@ from .client import TCEClient
 from .collectors.despesas import ExpensesCollector
 from .collectors.licitacoes import TendersCollector
 from .collectors.receitas import RevenueCollector
-from .database import DatabaseManager
+from .db_manager import DatabaseManager
 
 # Logging Configuration
 _log_dir = Path(__file__).parent.parent.parent / "logs"

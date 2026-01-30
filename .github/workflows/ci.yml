@@ -130,13 +130,14 @@ jobs:
           uv run bandit -r src/ -ll -ii
 
   # ──────────────────────────────────────────────────────────
-  # Job 5: Build Docker Image (Only on merge to main)
+  # Job 5: Build Docker Image
+  # - PR: Valida que o Dockerfile funciona (sem push)
+  # - Push na main: Build + Push para registry
   # ──────────────────────────────────────────────────────────
   build:
     name: 🐳 Build Docker
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
@@ -156,3 +157,9 @@ jobs:
       - name: Test Docker Image
         run: |
           docker run --rm public-audit-agent:${{ github.sha }} python -c "from src.config import get_settings; print('✅ Config OK')"
+
+      # Futuro: Push para registry apenas na main
+      # - name: Push to Registry
+      #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      #   run: |
+      #     docker push public-audit-agent:${{ github.sha }}

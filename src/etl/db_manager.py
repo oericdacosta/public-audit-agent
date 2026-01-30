@@ -1,15 +1,17 @@
 """
 Database Manager.
 
-Handles SQLite database connections, schema management, and queries.
+Handles DuckDB database connections, schema management, and queries.
 """
 
 import logging
-import sqlite3
 import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator, Optional
+
+import duckdb
+from duckdb import DuckDBPyConnection
 
 from src.config import get_settings
 from src.exceptions import ConfigurationError, DatabaseError
@@ -19,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     """
-    Manages SQLite database operations with connection pooling pattern.
+    Manages DuckDB database operations.
 
     Provides methods for schema initialization, query execution,
     and schema introspection.
@@ -29,7 +31,13 @@ class DatabaseManager:
         """Initialize the database manager with configured path."""
         settings = get_settings()
         try:
-            self.db_path = settings["database"]["path"]
+            # Fallback to .duckdb extension if still pointing to .db
+            db_path_str = settings["database"]["path"]
+            if db_path_str.endswith(".db") or db_path_str.endswith(".sqlite"):
+                db_path_str = db_path_str.replace(".db", ".duckdb").replace(
+                    ".sqlite", ".duckdb"
+                )
+            self.db_path = db_path_str
         except KeyError as e:
             raise ConfigurationError(
                 "Missing configuration key",
@@ -45,183 +53,134 @@ class DatabaseManager:
         Path("logs").mkdir(parents=True, exist_ok=True)
 
     @contextmanager
-    def get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+    def get_connection(self) -> Generator[DuckDBPyConnection, None, None]:
         """
         Get a database connection using context manager pattern.
 
         Yields:
-            SQLite connection that auto-closes on exit.
-
-        Example:
-            with db.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM table")
+            DuckDB connection that auto-closes on exit.
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = duckdb.connect(self.db_path)
         try:
             yield conn
         finally:
             conn.close()
 
-    def get_raw_connection(self) -> sqlite3.Connection:
+    def get_raw_connection(self) -> DuckDBPyConnection:
         """
         Get a raw database connection (caller manages lifecycle).
 
         Returns:
-            SQLite connection (must be closed by caller).
+            DuckDB connection (must be closed by caller).
         """
-        return sqlite3.connect(self.db_path)
+        return duckdb.connect(self.db_path)
 
     def initialize_schema(self) -> None:
         """Initialize all database tables and indexes."""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
+            # Enable JSON extension if not already enabled (usually built-in)
+            # conn.execute("INSTALL json; LOAD json;")
 
             # Table: Licitações (Tenders)
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS licitacoes (
                     id TEXT PRIMARY KEY,
                     municipio_id TEXT,
                     numero_licitacao TEXT,
                     numero_processo TEXT,
-                    objeto_licitacao TEXT, -- Description of object
-                    modalidade_licitacao TEXT, -- procurement_type
-                    data_realizacao_licitacao TEXT, -- date_of_tender (ISO8601)
-                    valor_estimado REAL, -- estimated_value
-                    situacao_licitacao TEXT, -- status
-                    exercicio_orcamento TEXT, -- fiscal_year (YYYY)
+                    objeto_licitacao TEXT,
+                    modalidade_licitacao TEXT,
+                    data_realizacao_licitacao TEXT,
+                    valor_estimado DOUBLE,
+                    situacao_licitacao TEXT,
+                    exercicio_orcamento TEXT,
                     raw_data JSON,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-                /* Metadata: Tenders and Contracts table (licitacao). */
             """)
-            cursor.execute(
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_lic_municipio "
                 "ON licitacoes(municipio_id)"
             )
-            cursor.execute(
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_lic_objeto "
                 "ON licitacoes(objeto_licitacao)"
             )
-            # Additional indexes for frequently filtered columns
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_lic_modalidade "
-                "ON licitacoes(modalidade_licitacao)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_lic_situacao "
-                "ON licitacoes(situacao_licitacao)"
-            )
-            # Composite index for multi-column queries
-            cursor.execute(
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_lic_mun_exerc "
                 "ON licitacoes(municipio_id, exercicio_orcamento)"
             )
 
             # Table: Despesas (Expenses)
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS despesas (
                     id TEXT PRIMARY KEY,
                     municipio_id TEXT,
-                    exercicio_orcamento TEXT, -- fiscal_year
-                    mes_referencia TEXT, -- reference_month (YYYYMM or MM)
-                    codigo_orgao TEXT, -- org_code
-                    codigo_unidade_orcamentaria TEXT, -- budget_unit_code
-                    codigo_funcao TEXT, -- Functional classification
-                    -- MAPPING:
-                    -- 01: Legislativa
-                    -- 04: Administração
-                    -- 06: Segurança Pública
-                    -- 08: Assistência Social
-                    -- 10: Saúde
-                    -- 12: Educação
-                    -- 13: Cultura
-                    -- 15: Urbanismo
-                    -- 18: Gestão Ambiental
-                    -- 26: Transporte
-                    -- 27: Desporto e Lazer
-                    -- 28: Encargos Especiais
-                    codigo_subfuncao TEXT, -- Subfunction
-                    codigo_programa TEXT, -- program_code
-                    codigo_elemento_despesa TEXT, -- expense_element_code
-                    valor_empenhado REAL, -- committed_value
-                    valor_liquidado REAL, -- verified_value
-                    valor_pago REAL, -- paid_value
+                    exercicio_orcamento TEXT,
+                    mes_referencia TEXT,
+                    codigo_orgao TEXT,
+                    codigo_unidade_orcamentaria TEXT,
+                    codigo_funcao TEXT,
+                    codigo_subfuncao TEXT,
+                    codigo_programa TEXT,
+                    codigo_elemento_despesa TEXT,
+                    valor_empenhado DOUBLE,
+                    valor_liquidado DOUBLE,
+                    valor_pago DOUBLE,
                     raw_data JSON,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-                /* Metadata: Public Expenses and Spending table. */
             """)
-            cursor.execute(
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_desp_municipio "
                 "ON despesas(municipio_id)"
             )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_desp_data ON despesas(mes_referencia)"
-            )
-            # Additional indexes for frequently filtered columns
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_desp_funcao ON despesas(codigo_funcao)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_desp_exercicio "
-                "ON despesas(exercicio_orcamento)"
-            )
-            # Composite index for multi-column queries
-            cursor.execute(
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_desp_mun_exerc "
                 "ON despesas(municipio_id, exercicio_orcamento)"
             )
 
             # Table: Receitas (Revenue)
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS receitas (
                     id TEXT PRIMARY KEY,
                     municipio_id TEXT,
-                    exercicio_orcamento TEXT, -- fiscal_year
-                    mes_referencia TEXT, -- reference_month
+                    exercicio_orcamento TEXT,
+                    mes_referencia TEXT,
                     codigo_orgao TEXT,
                     codigo_unidade_orcamentaria TEXT,
-                    codigo_receita TEXT, -- revenue_code
-                    descricao_receita TEXT, -- Revenue source
-                    valor_orcado REAL, -- budgeted_value
-                    valor_arrecadado REAL, -- collected_value
+                    codigo_receita TEXT,
+                    descricao_receita TEXT,
+                    valor_orcado DOUBLE,
+                    valor_arrecadado DOUBLE,
                     raw_data JSON,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-                /* Metadata: Revenue and Collection table (receita). */
             """)
-            cursor.execute(
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_rec_municipio ON receitas(municipio_id)"
             )
-            # dditional indexes for frequently filtered columns
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rec_exercicio "
-                "ON receitas(exercicio_orcamento)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rec_mes ON receitas(mes_referencia)"
-            )
-            # Composite index for multi-column queries
-            cursor.execute(
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_rec_mun_exerc "
                 "ON receitas(municipio_id, exercicio_orcamento)"
             )
 
-            # Table: Metadata (Idempotency)
-            cursor.execute("""
+            # Table: Metadata
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS etl_metadata (
                     municipio_id TEXT,
                     year INTEGER,
                     source TEXT,
-                    status TEXT, -- 'STARTED', 'COMPLETED', 'FAILED'
+                    status TEXT,
                     record_count INTEGER,
-                    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (municipio_id, year, source)
                 )
             """)
 
-            conn.commit()
+            # Implicitly committed. Explicit commit is no-op in AutoCommit mode
+            # but good practice if disabling autocommit.
+            # conn.commit()
 
     def execute_query(self, query: str) -> list[dict[str, Any]]:
         """
@@ -238,11 +197,12 @@ class DatabaseManager:
         """
         try:
             with self.get_connection() as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                cursor.execute(query)
-                return [dict(row) for row in cursor.fetchall()]
-        except sqlite3.Error as e:
+                from typing import cast
+
+                # Use .df() to leverage Pandas for easy dict conversion
+                df = conn.execute(query).df()
+                return cast(list[dict[str, Any]], df.to_dict(orient="records"))
+        except (duckdb.Error, Exception) as e:
             raise DatabaseError("Query execution failed", details=str(e)) from e
 
     def get_all_tables(self) -> list[str]:
@@ -253,44 +213,51 @@ class DatabaseManager:
             List of table names.
         """
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            return [row[0] for row in cursor.fetchall()]
+            # DuckDB-specific system query
+            rows = conn.execute("SHOW TABLES").fetchall()
+            return [row[0] for row in rows]
 
     def get_start_schema(
         self, limit_tables: Optional[list[str]] = None
     ) -> dict[str, str]:
         """
         Get schema definitions for tables.
-
-        Args:
-            limit_tables: Optional list of specific tables to fetch.
-
-        Returns:
-            Dictionary mapping table names to DDL statements.
+        For DuckDB, we reconstruct a CREATE TABLE statement from DESCRIBE.
         """
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            query = "SELECT name, sql FROM sqlite_master WHERE type='table'"
-            params: list[str] = []
-
+            tables = self.get_all_tables()
             if limit_tables:
-                placeholders = ",".join("?" * len(limit_tables))
-                query += f" AND name IN ({placeholders})"
-                params = limit_tables
+                tables = [t for t in tables if t in limit_tables]
 
-            cursor.execute(query, params)
-            return {row[0]: row[1] for row in cursor.fetchall()}
+            schemas = {}
+            for table in tables:
+                # Reconstruct simplified DDL
+                columns = conn.execute(f"DESCRIBE {table}").fetchall()
+                # columns row: column_name, column_type, null, key, default, extra
+                cols_ddl = []
+                for col in columns:
+                    name = col[0]
+                    dtype = col[1]
+                    is_null = col[2]
+                    key = col[3]
+                    # default = col[4]
+
+                    part = f"{name} {dtype}"
+                    if key == "PRI":
+                        part += " PRIMARY KEY"
+                    elif is_null == "NO":
+                        part += " NOT NULL"
+                    cols_ddl.append(part)
+
+                ddl = (
+                    f"CREATE TABLE {table} (\n    " + ",\n    ".join(cols_ddl) + "\n);"
+                )
+                schemas[table] = ddl
+            return schemas
 
     def search_schema(self, keyword: str) -> dict[str, str]:
         """
         Search table names and schema definitions for a keyword.
-
-        Args:
-            keyword: Keyword to search for (accent-insensitive).
-
-        Returns:
-            Dictionary of matching tables and their DDL.
         """
 
         def normalize_text(text: str) -> str:
@@ -302,17 +269,13 @@ class DatabaseManager:
                 if unicodedata.category(c) != "Mn"
             ).lower()
 
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name, sql FROM sqlite_master WHERE type='table'")
-            all_tables = cursor.fetchall()
-
+        schemas = self.get_start_schema()
         results: dict[str, str] = {}
         keyword_norm = normalize_text(keyword)
 
-        for name, sql in all_tables:
+        for name, sql in schemas.items():
             name_norm = normalize_text(name)
-            sql_norm = normalize_text(sql) if sql else ""
+            sql_norm = normalize_text(sql)
 
             if keyword_norm in name_norm or keyword_norm in sql_norm:
                 results[name] = sql

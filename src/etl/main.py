@@ -6,11 +6,12 @@ Coordinates the collection of public audit data from TCE APIs.
 
 import argparse
 import logging
-import duckdb
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
+
+import duckdb
 
 from src.config import get_settings
 

@@ -46,17 +46,25 @@ install:
 	@echo "✅ Dev environment ready!"
 
 lint:
+	@echo "🔍 Running Linter..."
 	uv run ruff check src/ tests/
-	uv run ruff format --check src/ tests/
 
 format:
+	@echo "🎨 Checking Format..."
+	uv run ruff format --check src/ tests/
+
+fix:
+	@echo "🛠️  Fixing Lint and Format..."
 	uv run ruff check --fix src/ tests/
 	uv run ruff format src/ tests/
+	@echo "✅ Code fixed!"
 
 typecheck:
+	@echo "🔷 Running Type Checker..."
 	uv run mypy src/ --ignore-missing-imports
 
 test:
+	@echo "🧪 Running Tests..."
 	uv run pytest tests/ -v --cov=src --cov-report=term-missing
 
 test-fast:
@@ -73,10 +81,10 @@ security:
 	rm requirements.txt
 	@echo "✅ Security scan complete!"
 
-check: lint typecheck test
+check: lint format typecheck test
 	@echo "✅ All checks passed!"
 
-ci: lint typecheck test security
+ci: check security
 	@echo "✅ CI simulation complete!"
 
 # ──────────────────────────────────────────────────────────
@@ -88,6 +96,11 @@ init-db:
 		"from src.etl.db_manager import DatabaseManager; \
 		DatabaseManager().initialize_schema(); \
 		print('Database schema initialized!')"
+
+etl:
+	@echo "Running ETL process..."
+	@uv run python -m src.etl.main --municipality 162
+	@echo "✅ ETL complete!"
 
 # ──────────────────────────────────────────────────────────
 # Cleanup

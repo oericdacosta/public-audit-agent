@@ -14,7 +14,8 @@ env/
 # Banco de Dados
 *.db
 *.sqlite3
-data/*.db
+data/*.duckdb
+data/*.wal
 
 # IDEs
 .vscode/

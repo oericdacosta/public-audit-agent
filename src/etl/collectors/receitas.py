@@ -79,47 +79,49 @@ class RevenueCollector(BaseCollector):
         month_ref: str,
     ) -> int:
         """
-        Save revenue records to the database.
+        Save revenue records to the database using bulk insert.
 
         Returns:
             Number of records saved.
         """
-        conn = self.db_manager.get_raw_connection()
-        cursor = conn.cursor()
-        count = 0
+        if not batch_data:
+            return 0
 
-        try:
-            for i, item in enumerate(batch_data):
-                rec_code = item.get("codigo_receita", "0")
-                val = item.get("valor_arrecadado_no_mes", "0")
-                rec_id = f"{municipio_id}_{month_ref}_{rec_code}_{val}_{i}"
+        # Transform records for bulk insert
+        records = []
+        for i, item in enumerate(batch_data):
+            rec_code = item.get("codigo_receita", "0")
+            val = item.get("valor_arrecadado_no_mes", "0")
+            rec_id = f"{municipio_id}_{month_ref}_{rec_code}_{val}_{i}"
 
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO receitas (
-                        id, municipio_id, exercicio_orcamento, mes_referencia,
-                        codigo_orgao, codigo_unidade_orcamentaria, codigo_receita,
-                        descricao_receita, valor_orcado, valor_arrecadado, raw_data
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        rec_id,
-                        municipio_id,
-                        str(year),
-                        month_ref,
-                        item.get("codigo_orgao"),
-                        item.get("codigo_unidade_orcamentaria"),
-                        item.get("codigo_receita"),
-                        item.get("descricao_receita"),
-                        item.get("valor_previsto_arrecadacao"),
-                        item.get("valor_arrecadado_no_mes"),
-                        json.dumps(item),
-                    ),
+            records.append(
+                (
+                    rec_id,
+                    municipio_id,
+                    str(year),
+                    month_ref,
+                    item.get("codigo_orgao"),
+                    item.get("codigo_unidade_orcamentaria"),
+                    item.get("codigo_receita"),
+                    item.get("descricao_receita"),
+                    item.get("valor_previsto_arrecadacao"),
+                    item.get("valor_arrecadado_no_mes"),
+                    json.dumps(item),
                 )
-                count += 1
+            )
 
-            conn.commit()
-        finally:
-            conn.close()
+        columns = [
+            "id",
+            "municipio_id",
+            "exercicio_orcamento",
+            "mes_referencia",
+            "codigo_orgao",
+            "codigo_unidade_orcamentaria",
+            "codigo_receita",
+            "descricao_receita",
+            "valor_orcado",
+            "valor_arrecadado",
+            "raw_data",
+        ]
 
-        return count
+        return self.bulk_insert("receitas", columns, records)

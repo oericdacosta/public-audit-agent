@@ -1,4 +1,4 @@
-.PHONY: up down restart logs shell clean lint test typecheck format install check security
+.PHONY: up down restart logs shell clean lint test typecheck format install check security docker-build docker-test ci
 
 # Project Variables
 COMPOSE = docker compose
@@ -23,6 +23,19 @@ logs:
 
 shell:
 	$(COMPOSE) exec $(SERVICE_NAME) bash
+
+# ──────────────────────────────────────────────────────────
+# Docker Build (Local)
+# ──────────────────────────────────────────────────────────
+docker-build:
+	@echo "Building Docker image..."
+	docker buildx build --load -t public-audit-agent:local .
+	@echo "✅ Image built: public-audit-agent:local"
+
+docker-test: docker-build
+	@echo "Testing Docker image..."
+	docker run --rm public-audit-agent:local python -c "from src.config import get_settings; print('✅ Config OK')"
+	@echo "✅ Docker image test passed!"
 
 # ──────────────────────────────────────────────────────────
 # Development Commands
@@ -53,12 +66,18 @@ test-fast:
 # Security & Quality
 # ──────────────────────────────────────────────────────────
 security:
+	@echo "Running security scans..."
 	uv export --no-dev > requirements.txt
 	uv run pip-audit --requirement requirements.txt
+	uv run bandit -r src/ -ll -ii
 	rm requirements.txt
+	@echo "✅ Security scan complete!"
 
 check: lint typecheck test
 	@echo "✅ All checks passed!"
+
+ci: lint typecheck test security
+	@echo "✅ CI simulation complete!"
 
 # ──────────────────────────────────────────────────────────
 # Database Commands

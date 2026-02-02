@@ -4,5 +4,5 @@ civic_audit:
   outputs:
     dev:
       type: duckdb
-      path: 'data/civic_audit.duckdb'
+      path: "{{ env_var('PWD') }}/data/civic_audit.duckdb"
       threads: 4

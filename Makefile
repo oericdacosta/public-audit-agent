@@ -48,6 +48,7 @@ install:
 lint:
 	@echo "🔍 Running Linter..."
 	uv run ruff check src/ tests/
+	uv run sqlfluff lint dbt/models/
 
 format:
 	@echo "🎨 Checking Format..."
@@ -57,6 +58,7 @@ fix:
 	@echo "🛠️  Fixing Lint and Format..."
 	uv run ruff check --fix src/ tests/
 	uv run ruff format src/ tests/
+	uv run sqlfluff fix dbt/models/
 	@echo "✅ Code fixed!"
 
 typecheck:

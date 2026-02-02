@@ -1,0 +1,68 @@
+
+version: 2
+
+sources:
+  - name: civic_audit_duckdb
+    schema: main
+    description: "Raw data collected from TCE-CE API and stored in DuckDB."
+    tables:
+      - name: licitacoes
+        description: "Tenders and procurement data."
+        columns:
+          - name: id
+            tests:
+              - unique
+              - not_null
+
+      - name: despesas
+        description: "Public expenses data."
+        columns:
+          - name: id
+            tests:
+              - unique
+              - not_null
+
+      - name: receitas
+        description: "Public revenue data."
+        columns:
+          - name: id
+            tests:
+              - unique
+              - not_null
+
+models:
+  - name: stg_licitacoes
+    description: "Staging model for tenders (licitacoes), casting types and renaming columns."
+    columns:
+      - name: licitacao_id
+        description: "Primary key for tenders."
+        tests:
+          - unique
+          - not_null
+      - name: municipio_id
+        tests:
+          - not_null
+
+  - name: stg_despesas
+    description: "Staging model for expenses (despesas), casting types and renaming columns."
+    columns:
+      - name: despesa_id
+        description: "Primary key for expenses."
+        tests:
+          - unique
+          - not_null
+      - name: municipio_id
+        tests:
+          - not_null
+
+  - name: stg_receitas
+    description: "Staging model for revenue (receitas), casting types and renaming columns."
+    columns:
+      - name: receita_id
+        description: "Primary key for revenue."
+        tests:
+          - unique
+          - not_null
+      - name: municipio_id
+        tests:
+          - not_null

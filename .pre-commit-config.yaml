@@ -23,6 +23,34 @@ repos:
         files: ^src/
 
   # ─────────────────────────────────────────────────────────────
+  # SQL Linting (SQLFluff)
+  # ─────────────────────────────────────────────────────────────
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 3.2.5
+    hooks:
+      - id: sqlfluff-lint
+        additional_dependencies: ['dbt-duckdb', 'dbt-core', 'sqlfluff-templater-dbt']
+      - id: sqlfluff-fix
+        additional_dependencies: ['dbt-duckdb', 'dbt-core', 'sqlfluff-templater-dbt']
+        args: [--config, .sqlfluff]
+
+
+  # ─────────────────────────────────────────────────────────────
+  # dbt Governance (Metadata & Docs)
+  # ─────────────────────────────────────────────────────────────
+  - repo: https://github.com/dbt-checkpoint/dbt-checkpoint
+    rev: v2.0.6
+    hooks:
+      - id: check-model-has-description
+        args: ["--manifest", "dbt/target/manifest.json"]
+      - id: check-model-columns-have-desc
+        args: ["--manifest", "dbt/target/manifest.json"]
+      - id: check-source-table-has-description
+        args: ["--manifest", "dbt/target/manifest.json"]
+
+
+
+  # ─────────────────────────────────────────────────────────────
   # Validações Gerais
   # ─────────────────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -40,7 +68,7 @@ repos:
   # Detecção de Secrets
   # ─────────────────────────────────────────────────────────────
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']

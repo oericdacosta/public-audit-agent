@@ -22,7 +22,7 @@ for row in data:
             row = json.loads(row)
         except:
             continue # Skip corrupted rows
-            
+
     # 2. Key Verification
     if isinstance(row, dict):
         val = row.get('valor', 0)
@@ -65,7 +65,7 @@ print(f"Found candidates: {{tables}}")
 
 # 2. Inspect schema to find correct columns
 schema = describe_table("tb_despesas_2024")
-print(schema) 
+print(schema)
 # Now I know columns are 'vlr_liquidado' not 'value'
 ```
 
@@ -93,8 +93,8 @@ total = rows[0]['total']  # Sempre retorna número
 ```python
 # Use explicit bounds for date ranges
 rows = query_sql("""
-    SELECT * FROM licitacoes 
-    WHERE data_realizacao_licitacao >= '2024-01-01' 
+    SELECT * FROM licitacoes
+    WHERE data_realizacao_licitacao >= '2024-01-01'
       AND data_realizacao_licitacao < '2024-02-01'
     LIMIT 10
 """)

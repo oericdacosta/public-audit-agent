@@ -8,6 +8,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./evals:/app/evals
+      - ./dbt:/app/dbt
       - /var/run/docker.sock:/var/run/docker.sock # Essential for spawning sibling containers
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}

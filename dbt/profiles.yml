@@ -1,0 +1,8 @@
+
+civic_audit:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: 'data/civic_audit.duckdb'
+      threads: 4

@@ -40,6 +40,7 @@ models:
           - unique
           - not_null
       - name: municipio_id
+        description: "Identificador único do município (IBGE)."
         tests:
           - not_null
 
@@ -52,6 +53,7 @@ models:
           - unique
           - not_null
       - name: municipio_id
+        description: "Identificador único do município (IBGE)."
         tests:
           - not_null
 
@@ -64,5 +66,6 @@ models:
           - unique
           - not_null
       - name: municipio_id
+        description: "Identificador único do município (IBGE)."
         tests:
           - not_null

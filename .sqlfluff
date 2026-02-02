@@ -1,0 +1,26 @@
+[sqlfluff]
+dialect = duckdb
+templater = dbt
+dbt_project_dir = ./dbt
+max_line_length = 100
+
+[sqlfluff:templater:dbt]
+project_dir = ./dbt
+profiles_dir = ./dbt
+profile = civic_audit
+target = dev
+
+[sqlfluff:indentation]
+tab_space_size = 4
+indent_unit = space
+indent_on_join = true
+implicit_indents = allow
+
+[sqlfluff:layout:type:comma]
+spacing_before = right
+line_position = leading
+
+[sqlfluff:rules:layout.indent]
+# Enforce CTE alignment
+indent_unit = space
+tab_space_size = 4

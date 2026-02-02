@@ -118,7 +118,7 @@ Todos os agentes se comunicam através de um dicionário de estado tipado:
 ```python
 class AgentState(TypedDict, total=False):
     messages: List[BaseMessage]     # Histórico de conversa
-    guardrail_verdict: str          # "SAFE" ou "UNSAFE"  
+    guardrail_verdict: str          # "SAFE" ou "UNSAFE"
     plan: str                       # Passos do Planejador
     sql_query: str                  # SQL do Agente Fiscal
     code: str                       # Código Python do Analista
@@ -180,7 +180,7 @@ print(f"Total: R$ {total:,.2f}")  # Apenas isso entra no contexto
 
 **Benefício:** O modelo vê apenas o resultado final (~1KB) em vez de dados brutos (~200KB).
 
-### 3. Programmatic Tool Calling 
+### 3. Programmatic Tool Calling
 
 **Problema:** Chamadas de ferramentas uma a uma geram muitos round-trips e latência.
 

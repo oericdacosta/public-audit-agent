@@ -31,6 +31,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /bin/uv
 COPY --from=builder /app/.venv /app/.venv
 
 COPY src/ src/
+COPY dbt/ dbt/
 COPY config.yaml .
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser \

@@ -114,4 +114,7 @@ clean: down
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type f -name ".coverage" -delete 2>/dev/null || true
+	find . -type f -name "coverage.xml" -delete 2>/dev/null || true
+	rm -rf dbt/target dbt/dbt_packages dbt/logs
+	uv run pre-commit clean
 	@echo "✅ Cleanup complete!"

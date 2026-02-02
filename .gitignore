@@ -36,3 +36,8 @@ htmlcov/
 .ruff_cache/
 
 docs/*
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml

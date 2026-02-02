@@ -10,7 +10,7 @@ app:
 tce:
   base_url: "https://api-dados-abertos.tce.ce.gov.br"
   sim_base_url: "https://api.tce.ce.gov.br/index.php/sim/1_0"
-  
+
 # Audit Target Scope
 audit:
   city_code: "162" # Sobral
@@ -36,4 +36,3 @@ sandbox:
   image: "python:3.12-slim"
   timeout: 30
   memory_limit: "512m"
-

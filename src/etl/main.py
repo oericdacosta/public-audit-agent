@@ -1,7 +1,8 @@
 """
 ETL Main Orchestrator.
 
-Coordinates the collection of public audit data from TCE APIs.
+Coordinates the collection of public audit data from TCE APIs using
+dynamic endpoint discovery.
 """
 
 import argparse
@@ -9,17 +10,18 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import duckdb
 
 from src.config import get_settings
-
-from .client import TCEClient
-from .collectors.despesas import ExpensesCollector
-from .collectors.licitacoes import TendersCollector
-from .collectors.receitas import RevenueCollector
-from .db_manager import DatabaseManager
+from src.etl.client import TCEClient
+from src.etl.collectors.despesas import ExpensesCollector
+from src.etl.collectors.generic import GenericCollector
+from src.etl.collectors.licitacoes import TendersCollector
+from src.etl.collectors.receitas import RevenueCollector
+from src.etl.db_manager import DatabaseManager
+from src.etl.endpoints import Endpoint
 
 # Logging Configuration
 _log_dir = Path(__file__).parent.parent.parent / "logs"
@@ -36,15 +38,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+ENDPOINT_TO_TABLE: Dict[Endpoint, str] = {
+    Endpoint.DESPESAS: "despesas",
+    Endpoint.RECEITAS: "receitas",
+    Endpoint.LICITACOES: "licitacoes",
+    Endpoint.MUNICIPIOS: "municipios",
+    Endpoint.ORGAOS: "orgaos",
+    Endpoint.UNIDADES_ORCAMENTARIAS: "unidades_orcamentarias",
+    Endpoint.FUNCOES: "funcoes",
+    Endpoint.ORDENADORES: "ordenadores",
+    Endpoint.CONTAS_BANCARIAS: "contas_bancarias",
+}
+
+
 def get_sync_status(
     db_manager: DatabaseManager, municipality_id: str, year: int, source: str
 ) -> Optional[str]:
-    """
-    Check if a specific year/source has been successfully ingested.
-
-    Returns:
-        'COMPLETED', 'STARTED', 'FAILED', or None if not found.
-    """
+    """Check if a specific year/source has been successfully ingested."""
     try:
         with db_manager.get_connection() as conn:
             cursor = conn.cursor()
@@ -58,7 +68,6 @@ def get_sync_status(
             row = cursor.fetchone()
             return row[0] if row else None
     except (duckdb.Error, duckdb.CatalogException):
-        # Table might not exist yet if schema init failed
         return None
 
 
@@ -85,18 +94,12 @@ def update_sync_status(
 
 def process_task(
     db_manager: DatabaseManager,
-    client: TCEClient,
     municipality_id: str,
     year: int,
     source_key: str,
     collector: Any,
 ) -> str:
-    """
-    Execute a single ETL task for a (Year, Source) pair.
-
-    Returns:
-        Status message string.
-    """
+    """Execute a single ETL task for a (Year, Source) pair."""
     process_id = f"{source_key.upper()}:{year}"
 
     # Check Idempotency
@@ -126,7 +129,7 @@ def run_etl(
     municipality_id: Optional[str] = None, manual_year: Optional[str] = None
 ) -> None:
     """
-    Run the ETL process for a municipality.
+    Run the ETL process for a municipality using dynamic endpoint discovery.
 
     Args:
         municipality_id: Municipality code (e.g., '162'). Uses config if not provided.
@@ -134,11 +137,12 @@ def run_etl(
     """
     settings = get_settings()
 
-    # 1. Resolve Parameters
     if not municipality_id:
         municipality_id = settings.get("audit", {}).get("city_code")
 
-    # Dynamic Rolling Window Logic
+    if not municipality_id:
+        raise ValueError("Municipality ID must be provided via args or config.")
+
     if manual_year:
         years = [int(manual_year)]
     else:
@@ -146,53 +150,54 @@ def run_etl(
         lookback = settings.get("audit", {}).get("data_retention_years", 5)
         years = list(range(current_year, current_year - lookback, -1))
 
-    # Data Sources
-    data_sources = ["licitacoes", "despesas", "receitas"]
-    if "contratos" in settings.get("audit", {}).get("data_sources", []):
-        data_sources.append("contratos")
-    if "notas_fiscais" in settings.get("audit", {}).get("data_sources", []):
-        data_sources.append("notas_fiscais")
-
-    logger.info("--- STARTING PROFESSIONAL BATCH ETL ---")
+    logger.info("--- STARTING AUTOMATED BATCH ETL ---")
     logger.info("Municipality: %s", municipality_id)
     logger.info("Years Window: %s", years)
-    logger.info("Sources: %s", data_sources)
 
-    # 2. Infra Init
     db_manager = DatabaseManager()
     db_manager.initialize_schema()
     client = TCEClient()
 
-    # 3. Collector Map
-    collector_map = {
-        "licitacoes": TendersCollector(db_manager, client),
-        "despesas": ExpensesCollector(db_manager, client),
-        "receitas": RevenueCollector(db_manager, client),
+    # Specialized Collectors (Strategy Pattern)
+    specialized_collectors: Dict[Endpoint, Any] = {
+        Endpoint.LICITACOES: TendersCollector(db_manager, client),
+        Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
+        Endpoint.RECEITAS: RevenueCollector(db_manager, client),
     }
 
-    # 4. Parallel Execution with Idempotency
     tasks = []
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         for year in years:
-            for source_key in data_sources:
-                if source_key not in collector_map:
+            for endpoint in Endpoint:
+                # 1. Resolve Table Name
+                if endpoint not in ENDPOINT_TO_TABLE:
+                    logger.warning(
+                        f"Endpoint {endpoint.name} has no mapped table. Skipping."
+                    )
                     continue
 
-                collector = collector_map[source_key]
+                table_name = ENDPOINT_TO_TABLE[endpoint]
+
+                # 2. Resolve Collector Strategy
+                if endpoint in specialized_collectors:
+                    collector = specialized_collectors[endpoint]
+                else:
+                    collector = GenericCollector(
+                        db_manager, client, endpoint, table_name
+                    )
+
                 tasks.append(
                     executor.submit(
                         process_task,
                         db_manager,
-                        client,
                         municipality_id,
                         year,
-                        source_key,
+                        table_name,
                         collector,
                     )
                 )
 
-        # Monitor execution
         for future in as_completed(tasks):
             result = future.result()
             logger.info(result)

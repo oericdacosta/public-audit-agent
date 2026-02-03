@@ -18,12 +18,20 @@ class Endpoint(Enum):
     """
     Enumeration of TCE API endpoints.
 
-    Each endpoint is defined by its relative path and the base URL it belongs to.
+    Each endpoint is defined by:
+    1. Relative path
+    2. Base URL type
     """
 
     DESPESAS = ("/balancete_despesa_orcamentaria.json", APIBase.SIM)
     RECEITAS = ("/balancete_receita_orcamentaria.json", APIBase.SIM)
     LICITACOES = ("/licitacoes", APIBase.DEFAULT)
+    MUNICIPIOS = ("/municipios", APIBase.SIM)
+    ORGAOS = ("/orgaos", APIBase.SIM)
+    UNIDADES_ORCAMENTARIAS = ("/unidades_orcamentarias", APIBase.SIM)
+    FUNCOES = ("/funcoes", APIBase.SIM)
+    ORDENADORES = ("/ordenadores", APIBase.SIM)
+    CONTAS_BANCARIAS = ("/contas_bancarias", APIBase.SIM)
 
     path: str
     base: APIBase

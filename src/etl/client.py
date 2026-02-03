@@ -139,3 +139,19 @@ class TCEClient:
 
         logger.error("Failed to fetch %s after %d attempts.", url, retries)
         return None
+
+    def fetch(
+        self, endpoint: Endpoint, params: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        """
+        Syntactic sugar for fetching a specific endpoint.
+
+        Args:
+            endpoint: The API endpoint definition.
+            params: Query parameters.
+
+        Returns:
+            Parsed JSON or None.
+        """
+        url = self.build_url(endpoint)
+        return self.fetch_json(url, params)

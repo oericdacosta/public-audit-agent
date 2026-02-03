@@ -45,6 +45,11 @@ class DatabaseManager:
             ) from e
         self._setup_directories()
 
+    def _validate_table_name(self, table_name: str) -> None:
+        """Video game validation for table names to prevent SQL injection."""
+        if not table_name.isidentifier():
+            raise ValueError(f"Invalid table name: {table_name}")
+
     def _setup_directories(self) -> None:
         """Create necessary directories for database and logs."""
         db_path = Path(self.db_path)
@@ -281,3 +286,48 @@ class DatabaseManager:
                 results[name] = sql
 
         return results
+
+    def load_data(
+        self, table_name: str, data: dict[str, Any] | list[dict[str, Any]]
+    ) -> None:
+        """
+        Load JSON data into a table, creating it if it doesn't exist.
+
+        Args:
+            table_name: Target table name.
+            data: List of dicts or single dict to insert.
+        """
+        if not data:
+            return
+
+        # Ensure data is a list
+        if isinstance(data, dict):
+            # If the API returns a single object wrapper (e.g. {"data": [...]})
+            # we might need adjustment, but assuming list of rows for now
+            # or wrapping single object in list.
+            data = [data]
+
+        # We use a temporary file or memory to load into DuckDB
+        # A simple way is to register the list of dicts as a virtual table in Python
+        # DuckDB Python client handles list of dicts automatically in insert/create
+
+        try:
+            with self.get_connection() as conn:
+                # Validate input to prevent SQL injection
+                self._validate_table_name(table_name)
+
+                # 1. Create Table if not exists (Schema Inference)
+                # We create a temporary view from the data first to infer types
+                conn.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table_name} "  # nosec B608
+                    "AS SELECT * FROM data LIMIT 0"
+                )
+
+                # 2. Insert Data
+                # Note: 'data' variable is auto-magically recognized by DuckDB
+                # python client
+                conn.execute(f"INSERT INTO {table_name} SELECT * FROM data")  # nosec B608
+
+        except (duckdb.Error, Exception) as e:
+            logger.error(f"Failed to load data into {table_name}: {e}")
+            raise DatabaseError(f"Load failed for {table_name}", details=str(e)) from e

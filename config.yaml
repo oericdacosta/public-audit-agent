@@ -9,7 +9,7 @@ app:
 # Data Sources (TCE-CE)
 tce:
   base_url: "https://api-dados-abertos.tce.ce.gov.br"
-  sim_base_url: "https://api.tce.ce.gov.br/index.php/sim/1_0"
+  sim_base_url: "https://api-dados-abertos.tce.ce.gov.br"
 
 # Audit Target Scope
 audit:

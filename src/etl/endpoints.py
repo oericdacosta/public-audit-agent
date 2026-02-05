@@ -23,15 +23,19 @@ class Endpoint(Enum):
     2. Base URL type
     """
 
-    DESPESAS = ("/balancete_despesa_orcamentaria.json", APIBase.SIM)
-    RECEITAS = ("/balancete_receita_orcamentaria.json", APIBase.SIM)
+    DESPESAS = ("/balancete_despesa_orcamentaria", APIBase.DEFAULT)
+    RECEITAS = ("/balancete_receita_orcamentaria", APIBase.DEFAULT)
     LICITACOES = ("/licitacoes", APIBase.DEFAULT)
-    MUNICIPIOS = ("/municipios", APIBase.SIM)
-    ORGAOS = ("/orgaos", APIBase.SIM)
-    UNIDADES_ORCAMENTARIAS = ("/unidades_orcamentarias", APIBase.SIM)
-    FUNCOES = ("/funcoes", APIBase.SIM)
-    ORDENADORES = ("/ordenadores", APIBase.SIM)
-    CONTAS_BANCARIAS = ("/contas_bancarias", APIBase.SIM)
+    MUNICIPIOS = ("/municipios", APIBase.DEFAULT)
+    ORGAOS = ("/orgaos", APIBase.DEFAULT)
+    UNIDADES_ORCAMENTARIAS = ("/unidades_orcamentarias", APIBase.DEFAULT)
+    FUNCOES = ("/funcoes", APIBase.DEFAULT)
+    ORDENADORES = ("/ordenadores", APIBase.DEFAULT)
+
+    CONTAS_BANCARIAS = ("/contas_bancarias", APIBase.DEFAULT)
+    PROGRAMAS = ("/programas", APIBase.DEFAULT)
+    PROJETOS_ATIVIDADES = ("/despesa_projeto_atividade", APIBase.DEFAULT)
+    ORCAMENTO_RECEITA = ("/orcamento_receita", APIBase.DEFAULT)
 
     path: str
     base: APIBase

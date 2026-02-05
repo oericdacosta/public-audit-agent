@@ -1,26 +1,28 @@
 """
-TCE API Client.
+TCE API Client - Optimized.
 
 HTTP client for fetching data from the TCE (Tribunal de Contas) APIs.
-Includes rate limiting and circuit breaker for resilience.
+Uses session pooling for connection reuse, rate limiting and circuit breaker.
 """
 
 import logging
+import threading
 import time
 from typing import Any, Optional, cast
 
 import pybreaker
 import requests
-from ratelimit import limits, sleep_and_retry
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from src.config import get_settings
 from src.etl.endpoints import APIBase, Endpoint
 
 logger = logging.getLogger(__name__)
 
-# Rate limit: 10 requests per second
+# Rate limit: 10 requests per second (prevents IP blocking)
 RATE_LIMIT_CALLS = 10
-RATE_LIMIT_PERIOD = 1  # seconds
+RATE_LIMIT_PERIOD = 1.0  # seconds
 
 # Circuit breaker: open after 5 failures, reset after 60 seconds
 CIRCUIT_FAIL_MAX = 5
@@ -31,8 +33,8 @@ class TCEClient:
     """
     HTTP client for TCE public data APIs.
 
-    Provides retry logic, timeout handling, rate limiting,
-    and circuit breaker for API requests.
+    Uses session pooling for connection reuse, rate limiting,
+    retry logic with backoff, and circuit breaker for API requests.
     """
 
     # Default HTTP headers for API requests
@@ -40,6 +42,7 @@ class TCEClient:
         "User-Agent": "CivicAudit-ETL/1.0 (Public Audit Agent)",
         "Accept": "application/json",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate",
     }
 
     # Circuit breaker shared across all instances
@@ -49,12 +52,75 @@ class TCEClient:
         name="TCEAPIBreaker",
     )
 
+    # Shared session for connection pooling
+    _session: Optional[requests.Session] = None
+
+    # Rate limiter state (thread-safe)
+    _rate_lock = threading.Lock()
+    _request_times: list[float] = []
+
     def __init__(self) -> None:
-        """Initialize the TCE client with configured URLs."""
+        """Initialize the TCE client with configured URLs and session."""
         settings = get_settings()
         tce_config = settings.get("tce", {})
         self.BASE_URL = tce_config.get("base_url", "")
         self.SIM_BASE_URL = tce_config.get("sim_base_url", "")
+
+        # Initialize shared session with connection pooling
+        if TCEClient._session is None:
+            TCEClient._session = self._create_session()
+
+    def _create_session(self) -> requests.Session:
+        """
+        Create a session with connection pooling and retry strategy.
+
+        Returns:
+            Configured requests Session.
+        """
+        session = requests.Session()
+        session.headers.update(self.DEFAULT_HEADERS)
+
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1.0,  # Wait 1s, 2s, 4s between retries
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"],
+        )
+
+        # Configure connection pooling (conservative settings)
+        adapter = HTTPAdapter(
+            pool_connections=5,  # Reduced from 20
+            pool_maxsize=10,  # Reduced from 50
+            max_retries=retry_strategy,
+        )
+
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        logger.info("TCEClient session initialized with rate limiting")
+        return session
+
+    def _wait_for_rate_limit(self) -> None:
+        """
+        Enforce rate limiting: max RATE_LIMIT_CALLS per RATE_LIMIT_PERIOD.
+        Thread-safe implementation.
+        """
+        with self._rate_lock:
+            now = time.time()
+            # Remove requests older than the rate limit period
+            self._request_times = [
+                t for t in self._request_times if now - t < RATE_LIMIT_PERIOD
+            ]
+
+            if len(self._request_times) >= RATE_LIMIT_CALLS:
+                # Wait until oldest request expires
+                sleep_time = RATE_LIMIT_PERIOD - (now - self._request_times[0])
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                    self._request_times = self._request_times[1:]
+
+            self._request_times.append(time.time())
 
     def build_url(self, endpoint: Endpoint) -> str:
         """
@@ -73,13 +139,11 @@ class TCEClient:
 
         return f"{base.rstrip('/')}{endpoint.path}"
 
-    @sleep_and_retry
-    @limits(calls=RATE_LIMIT_CALLS, period=RATE_LIMIT_PERIOD)
-    def _rate_limited_request(
+    def _make_request(
         self, url: str, params: dict[str, Any], timeout: int
     ) -> requests.Response:
         """
-        Execute a rate-limited HTTP GET request.
+        Execute HTTP GET request using the shared session with rate limiting.
 
         Args:
             url: API endpoint URL.
@@ -89,56 +153,47 @@ class TCEClient:
         Returns:
             Response object from requests library.
         """
-        return requests.get(
-            url,
-            params=params,
-            timeout=timeout,
-            headers=self.DEFAULT_HEADERS,
-        )
+        # Enforce rate limit before making request
+        self._wait_for_rate_limit()
+
+        assert TCEClient._session is not None
+        return TCEClient._session.get(url, params=params, timeout=timeout)
 
     def fetch_json(
-        self, url: str, params: dict[str, Any], timeout: int = 20, retries: int = 3
+        self, url: str, params: dict[str, Any], timeout: int = 30, retries: int = 3
     ) -> Optional[dict[str, Any]]:
         """
         Fetch JSON data from a URL with retry logic and resilience.
 
-        Uses rate limiting to avoid overwhelming the API and circuit breaker
-        to fail fast when the API is unavailable.
+        Uses connection pooling and circuit breaker for performance and reliability.
 
         Args:
             url: API endpoint URL.
             params: Query parameters.
             timeout: Request timeout in seconds.
-            retries: Number of retry attempts.
+            retries: Number of retry attempts (handled by HTTPAdapter).
 
         Returns:
             Parsed JSON response or None if all attempts fail.
         """
-        for attempt in range(retries):
-            try:
-                response = self._circuit_breaker.call(
-                    self._rate_limited_request, url, params, timeout
-                )
+        try:
+            response = self._circuit_breaker.call(
+                self._make_request, url, params, timeout
+            )
 
-                if response.status_code == 404:
-                    return None
-
-                response.raise_for_status()
-                return cast(dict[str, Any], response.json())
-
-            except pybreaker.CircuitBreakerError:
-                logger.error("Circuit breaker is open. Skipping request to %s", url)
+            if response.status_code == 404:
                 return None
 
-            except requests.exceptions.RequestException as e:
-                logger.warning(
-                    "Request failed (attempt %d/%d): %s", attempt + 1, retries, e
-                )
-                # Exponential backoff
-                time.sleep(1 * (attempt + 1))
+            response.raise_for_status()
+            return cast(dict[str, Any], response.json())
 
-        logger.error("Failed to fetch %s after %d attempts.", url, retries)
-        return None
+        except pybreaker.CircuitBreakerError:
+            logger.error("Circuit breaker is open. Skipping request to %s", url)
+            return None
+
+        except requests.exceptions.RequestException as e:
+            logger.warning("Request failed for %s: %s", url, e)
+            return None
 
     def fetch(
         self, endpoint: Endpoint, params: dict[str, Any]
@@ -155,3 +210,11 @@ class TCEClient:
         """
         url = self.build_url(endpoint)
         return self.fetch_json(url, params)
+
+    @classmethod
+    def close_session(cls) -> None:
+        """Close the shared session. Call at end of ETL process."""
+        if cls._session is not None:
+            cls._session.close()
+            cls._session = None
+            logger.info("TCEClient session closed")

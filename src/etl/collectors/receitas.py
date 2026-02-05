@@ -1,12 +1,13 @@
 """
-Revenue (Receitas) Collector.
+Revenue (Receitas) Collector - Optimized.
 
-Collects public revenue data from the TCE API.
+Collects public revenue data from the TCE API with parallel fetching.
 """
 
 import json
 import logging
-from typing import Any, Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from src.etl.endpoints import Endpoint
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class RevenueCollector(BaseCollector):
-    """Collector for public revenue (receita) data."""
+    """Collector for public revenue (receita) data with parallel fetching."""
 
     def run(self, municipio_id: str, year: int) -> int:
         """
@@ -25,73 +26,96 @@ class RevenueCollector(BaseCollector):
         Returns:
             Total number of records collected.
         """
-        total = 0
-        logger.info(">>> Starting Receitas")
+        logger.info(">>> Starting Receitas - Parallel Mode")
 
-        for batch, month_ref in self.fetch_by_month(municipio_id, year):
-            saved = self.save(batch, municipio_id, year, month_ref)
-            total += saved
+        # Fetch all 12 months in parallel
+        all_records = self._fetch_all_months_parallel(municipio_id, year)
 
+        if not all_records:
+            logger.info("Receitas: No records found.")
+            return 0
+
+        # Bulk save all records at once
+        total = self._save_all(all_records, municipio_id, year)
         logger.info("Receitas completed: %d records.", total)
         return total
 
-    def fetch_by_month(
+    def _fetch_all_months_parallel(
         self, municipio_id: str, year: int
-    ) -> Iterator[tuple[list[dict[str, Any]], str]]:
+    ) -> list[dict[str, Any]]:
         """
-        Fetch revenue data month by month.
-
-        Yields:
-            Tuples of (batch_data, month_reference).
-        """
-        for month in range(1, 13):
-            month_ref = f"{year}{month:02d}"
-            params = {
-                "codigo_municipio": municipio_id,
-                "exercicio_orcamento": f"{year}00",
-                "data_referencia": month_ref,
-            }
-            url = self.client.build_url(Endpoint.RECEITAS)
-
-            logger.info("Fetching Receitas: %s", month_ref)
-            data = self.client.fetch_json(url, params)
-
-            if data:
-                content = None
-                if "rsp" in data and "_content" in data["rsp"]:
-                    content = data["rsp"]["_content"]
-                else:
-                    content = (
-                        data.get("data")
-                        or data.get("rows")
-                        or data.get("balancete_receita_orcamentaria")
-                    )
-
-                if content:
-                    if isinstance(content, list):
-                        yield (content, month_ref)
-                    elif isinstance(content, dict):
-                        yield ([content], month_ref)
-
-    def save(
-        self,
-        batch_data: list[dict[str, Any]],
-        municipio_id: str,
-        year: int,
-        month_ref: str,
-    ) -> int:
-        """
-        Save revenue records to the database using bulk insert.
+        Fetch all 12 months in parallel.
 
         Returns:
-            Number of records saved.
+            Flattened list of all revenue records.
         """
-        if not batch_data:
+        all_records: list[dict[str, Any]] = []
+
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            futures = {
+                executor.submit(self._fetch_month, municipio_id, year, month): month
+                for month in range(1, 13)
+            }
+
+            for future in as_completed(futures):
+                month = futures[future]
+                try:
+                    month_records = future.result()
+                    if month_records:
+                        all_records.extend(month_records)
+                        logger.info(
+                            "Receitas month %02d: %d records", month, len(month_records)
+                        )
+                except Exception as e:
+                    logger.error("Failed to fetch Receitas month %d: %s", month, e)
+
+        return all_records
+
+    def _fetch_month(
+        self, municipio_id: str, year: int, month: int
+    ) -> list[dict[str, Any]]:
+        """Fetch revenue data for a single month."""
+        month_ref = f"{year}{month:02d}"
+        params = {
+            "codigo_municipio": municipio_id,
+            "exercicio_orcamento": f"{year}00",
+            "data_referencia": month_ref,
+        }
+        url = self.client.build_url(Endpoint.RECEITAS)
+
+        data = self.client.fetch_json(url, params)
+        if not data:
+            return []
+
+        content = None
+        if "rsp" in data and "_content" in data["rsp"]:
+            content = data["rsp"]["_content"]
+        elif "data" in data:
+            content = data["data"]
+        elif "balancete_receita_orcamentaria" in data:
+            content = data["balancete_receita_orcamentaria"]
+
+        if content:
+            if isinstance(content, list):
+                return content
+            elif isinstance(content, dict):
+                return [content]
+
+        return []
+
+    def _save_all(
+        self,
+        all_records: list[dict[str, Any]],
+        municipio_id: str,
+        year: int,
+    ) -> int:
+        """Save all records to database in one bulk insert."""
+        if not all_records:
             return 0
 
-        # Transform records for bulk insert
         records = []
-        for i, item in enumerate(batch_data):
+        for i, item in enumerate(all_records):
+            month_ref = item.get("data_referencia", f"{year}00")
             rec_code = item.get("codigo_receita", "0")
             val = item.get("valor_arrecadado_no_mes", "0")
             rec_id = f"{municipio_id}_{month_ref}_{rec_code}_{val}_{i}"
@@ -126,4 +150,6 @@ class RevenueCollector(BaseCollector):
             "raw_data",
         ]
 
-        return self.bulk_insert("receitas", columns, records)
+        update_columns = ["valor_orcado", "valor_arrecadado", "raw_data"]
+
+        return self.bulk_upsert("receitas", columns, records, update_columns)

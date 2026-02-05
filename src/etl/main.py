@@ -48,6 +48,9 @@ ENDPOINT_TO_TABLE: Dict[Endpoint, str] = {
     Endpoint.FUNCOES: "funcoes",
     Endpoint.ORDENADORES: "ordenadores",
     Endpoint.CONTAS_BANCARIAS: "contas_bancarias",
+    Endpoint.PROGRAMAS: "programas",
+    Endpoint.PROJETOS_ATIVIDADES: "orcamento_despesa",
+    Endpoint.ORCAMENTO_RECEITA: "orcamento_receita",
 }
 
 
@@ -80,16 +83,20 @@ def update_sync_status(
     count: int = 0,
 ) -> None:
     """Update the execution state in the database."""
-    with db_manager.get_connection() as conn:
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO etl_metadata
-            (municipio_id, year, source, status, record_count, last_updated)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            (municipality_id, year, source, status, count),
-        )
-        conn.commit()
+    # Import here to avoid circular dependency
+    from src.etl.collectors.base import _DB_WRITE_LOCK
+
+    with _DB_WRITE_LOCK:
+        with db_manager.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO etl_metadata
+                (municipio_id, year, source, status, record_count, last_updated)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (municipality_id, year, source, status, count),
+            )
+            conn.commit()
 
 
 def process_task(
@@ -167,7 +174,7 @@ def run_etl(
 
     tasks = []
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         for year in years:
             for endpoint in Endpoint:
                 # 1. Resolve Table Name

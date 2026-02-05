@@ -1,12 +1,13 @@
 """
-Expenses (Despesas) Collector.
+Expenses (Despesas) Collector - Optimized.
 
-Collects public expense data from the TCE API.
+Collects public expense data from the TCE API with parallel fetching.
 """
 
 import json
 import logging
-from typing import Any, Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from src.etl.endpoints import Endpoint
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExpensesCollector(BaseCollector):
-    """Collector for public expense (despesa) data."""
+    """Collector for public expense (despesa) data with parallel fetching."""
 
     def run(self, municipio_id: str, year: int) -> int:
         """
@@ -25,90 +26,177 @@ class ExpensesCollector(BaseCollector):
         Returns:
             Total number of records collected.
         """
-        total = 0
-        logger.info(">>> Starting Despesas (Financial)")
+        logger.info(">>> Starting Despesas (Financial) - Parallel Mode")
 
-        for batch, month_ref in self.fetch_by_month(municipio_id, year):
-            saved = self.save(batch, municipio_id, year, month_ref)
-            total += saved
+        # Fetch all 12 months in parallel, each with parallel pagination
+        all_records = self._fetch_all_months_parallel(municipio_id, year)
 
+        if not all_records:
+            logger.info("Despesas: No records found.")
+            return 0
+
+        # Bulk save all records at once
+        total = self._save_all(all_records, municipio_id, year)
         logger.info("Despesas completed: %d records.", total)
         return total
 
-    def fetch_by_month(
+    def _fetch_all_months_parallel(
         self, municipio_id: str, year: int
-    ) -> Iterator[tuple[list[dict[str, Any]], str]]:
+    ) -> list[dict[str, Any]]:
         """
-        Fetch expense data month by month in parallel.
+        Fetch all 12 months in parallel. Each month fetches all pages in parallel.
 
-        Yields:
-            Tuples of (batch_data, month_reference).
+        Returns:
+            Flattened list of all expense records.
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        all_records: list[dict[str, Any]] = []
 
-        months = range(1, 13)
-        futures = {}
+        # Submit all 12 months to thread pool
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            futures = {
+                executor.submit(
+                    self._fetch_month_with_pagination, municipio_id, year, month
+                ): month
+                for month in range(1, 13)
+            }
 
-        # Parallelize fetching of 12 months
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            for month in months:
-                month_ref = f"{year}{month:02d}"
-                params = {
-                    "codigo_municipio": municipio_id,
-                    "exercicio_orcamento": f"{year}00",
-                    "data_referencia": month_ref,
-                }
-                url = self.client.build_url(Endpoint.DESPESAS)
-
-                # Submit task
-                future = executor.submit(self.client.fetch_json, url, params)
-                futures[future] = month_ref
-
-            # Process as they complete
             for future in as_completed(futures):
-                month_ref = futures[future]
+                month = futures[future]
                 try:
-                    logger.info("Fetching Despesas: %s", month_ref)
-                    data = future.result()
-
-                    if data:
-                        content = None
-                        if "rsp" in data and "_content" in data["rsp"]:
-                            content = data["rsp"]["_content"]
-                        else:
-                            content = (
-                                data.get("data")
-                                or data.get("rows")
-                                or data.get("balancete_despesa_orcamentaria")
-                            )
-
-                        if content:
-                            if isinstance(content, list):
-                                yield (content, month_ref)
-                            elif isinstance(content, dict):
-                                yield ([content], month_ref)
+                    month_records = future.result()
+                    if month_records:
+                        all_records.extend(month_records)
+                        logger.info(
+                            "Month %d: Collected %d records", month, len(month_records)
+                        )
                 except Exception as e:
-                    logger.error("Failed to fetch Despesas for %s: %s", month_ref, e)
+                    logger.error("Failed to fetch month %d: %s", month, e)
 
-    def save(
+        return all_records
+
+    def _fetch_month_with_pagination(
+        self, municipio_id: str, year: int, month: int
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch a single month with parallel pagination.
+
+        Strategy:
+        1. Fetch page 0 to get total count
+        2. Calculate all page offsets
+        3. Fetch all remaining pages in parallel
+        """
+        month_ref = f"{year}{month:02d}"
+        url = self.client.build_url(Endpoint.DESPESAS)
+
+        # First request: get total and first batch
+        params = {
+            "codigo_municipio": municipio_id,
+            "exercicio_orcamento": f"{year}00",
+            "data_referencia": month_ref,
+            "quantidade": "100",
+            "deslocamento": "0",
+        }
+
+        first_response = self.client.fetch_json(url, params)
+        if not first_response:
+            return []
+
+        first_batch, total = self._extract_records_and_total(first_response)
+        if not first_batch:
+            return []
+
+        logger.info("Month %s: Found %d records", month_ref, total)
+
+        # If all records fit in first page, done
+        if total <= 100:
+            return first_batch
+
+        # Calculate remaining offsets
+        offsets = list(range(100, total, 100))
+
+        # Fetch all remaining pages in parallel (within this month)
+        all_records = list(first_batch)
+
+        with ThreadPoolExecutor(max_workers=10) as page_executor:
+            page_futures = {
+                page_executor.submit(
+                    self._fetch_page, url, municipio_id, year, month_ref, offset
+                ): offset
+                for offset in offsets
+            }
+
+            for future in as_completed(page_futures):
+                try:
+                    page_records = future.result()
+                    if page_records:
+                        all_records.extend(page_records)
+                except Exception as e:
+                    offset = page_futures[future]
+                    logger.warning("Failed to fetch page offset %d: %s", offset, e)
+
+        return all_records
+
+    def _fetch_page(
         self,
-        batch_data: list[dict[str, Any]],
+        url: str,
         municipio_id: str,
         year: int,
         month_ref: str,
-    ) -> int:
-        """
-        Save expense records to the database using bulk insert.
+        offset: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch a single page of data."""
+        params = {
+            "codigo_municipio": municipio_id,
+            "exercicio_orcamento": f"{year}00",
+            "data_referencia": month_ref,
+            "quantidade": "100",
+            "deslocamento": str(offset),
+        }
+        response = self.client.fetch_json(url, params)
+        if response:
+            records, _ = self._extract_records_and_total(response)
+            return records
+        return []
 
-        Returns:
-            Number of records saved.
-        """
-        if not batch_data:
+    def _extract_records_and_total(
+        self, data: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Extract records list and total count from API response."""
+        total = 0
+        records: list[dict[str, Any]] = []
+
+        if "rsp" in data and "_content" in data["rsp"]:
+            content = data["rsp"]["_content"]
+            if isinstance(content, list):
+                records = content
+            elif isinstance(content, dict):
+                records = [content]
+        elif "data" in data:
+            inner = data["data"]
+            if isinstance(inner, dict):
+                total = int(inner.get("total", 0))
+                if "data" in inner:
+                    records = inner["data"] if isinstance(inner["data"], list) else []
+            elif isinstance(inner, list):
+                records = inner
+        elif "balancete_despesa_orcamentaria" in data:
+            records = data["balancete_despesa_orcamentaria"]
+
+        return records, total
+
+    def _save_all(
+        self,
+        all_records: list[dict[str, Any]],
+        municipio_id: str,
+        year: int,
+    ) -> int:
+        """Save all records to database in one bulk insert."""
+        if not all_records:
             return 0
 
-        # Transform records for bulk insert
         records = []
-        for i, item in enumerate(batch_data):
+        for i, item in enumerate(all_records):
+            month_ref = item.get("data_referencia", f"{year}00")
             elem = item.get("codigo_elemento_despesa", "0")
             val = item.get("valor_pago_no_mes", "0")
             exp_id = f"{municipio_id}_{month_ref}_{elem}_{val}_{i}"
@@ -149,4 +237,12 @@ class ExpensesCollector(BaseCollector):
             "raw_data",
         ]
 
-        return self.bulk_insert("despesas", columns, records)
+        # Columns to update on conflict (all except id)
+        update_columns = [
+            "valor_empenhado",
+            "valor_liquidado",
+            "valor_pago",
+            "raw_data",
+        ]
+
+        return self.bulk_upsert("despesas", columns, records, update_columns)

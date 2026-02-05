@@ -291,7 +291,10 @@ class DatabaseManager:
         self, table_name: str, data: dict[str, Any] | list[dict[str, Any]]
     ) -> None:
         """
-        Load JSON data into a table, creating it if it doesn't exist.
+        Load JSON data into a table using DataFrame INSERT.
+
+        Uses DuckDB's native DataFrame support with UPSERT for tables with 'id'.
+        This method is for generic tables where we don't control the schema.
 
         Args:
             table_name: Target table name.
@@ -302,31 +305,54 @@ class DatabaseManager:
 
         # Ensure data is a list
         if isinstance(data, dict):
-            # If the API returns a single object wrapper (e.g. {"data": [...]})
-            # we might need adjustment, but assuming list of rows for now
-            # or wrapping single object in list.
             data = [data]
 
-        # We use a temporary file or memory to load into DuckDB
-        # A simple way is to register the list of dicts as a virtual table in Python
-        # DuckDB Python client handles list of dicts automatically in insert/create
+        # Convert list of dicts to pandas DataFrame for DuckDB compatibility
+        import pandas as pd
+
+        df = pd.DataFrame(data)
+
+        if df.empty:
+            return
 
         try:
-            with self.get_connection() as conn:
-                # Validate input to prevent SQL injection
-                self._validate_table_name(table_name)
+            # Validate input to prevent SQL injection
+            self._validate_table_name(table_name)
 
-                # 1. Create Table if not exists (Schema Inference)
-                # We create a temporary view from the data first to infer types
+            with self.get_connection() as conn:
+                # 1. Create Table if not exists (Schema Inference from DataFrame)
                 conn.execute(
                     f"CREATE TABLE IF NOT EXISTS {table_name} "  # nosec B608
-                    "AS SELECT * FROM data LIMIT 0"
+                    "AS SELECT * FROM df LIMIT 0"
                 )
 
-                # 2. Insert Data
-                # Note: 'data' variable is auto-magically recognized by DuckDB
-                # python client
-                conn.execute(f"INSERT INTO {table_name} SELECT * FROM data")  # nosec B608
+                # 2. Check if table has 'id' column for upsert
+                columns = [
+                    col[0]
+                    for col in conn.execute(
+                        f"PRAGMA table_info('{table_name}')"
+                    ).fetchall()
+                ]
+
+                if "id" in columns and "id" in df.columns:
+                    # Use UPSERT for incremental support
+                    update_cols = [c for c in df.columns if c != "id"]
+                    update_set = ", ".join(
+                        [f"{col} = EXCLUDED.{col}" for col in update_cols]
+                    )
+
+                    conn.execute(
+                        f"INSERT INTO {table_name} "  # nosec B608
+                        f"SELECT * FROM df "
+                        f"ON CONFLICT (id) DO UPDATE SET {update_set}"
+                    )
+                else:
+                    # Simple insert for tables without 'id' column
+                    conn.execute(
+                        f"INSERT INTO {table_name} SELECT * FROM df"  # nosec B608
+                    )
+
+                conn.commit()
 
         except (duckdb.Error, Exception) as e:
             logger.error(f"Failed to load data into {table_name}: {e}")

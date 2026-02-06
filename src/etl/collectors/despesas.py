@@ -1,90 +1,28 @@
 """
-Expenses (Despesas) Collector - Optimized.
+Expenses (Despesas) Collector.
 
 Collects public expense data from the TCE API with parallel fetching.
+Uses MonthlyCollector base class for shared monthly iteration logic.
 """
 
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
 
 from src.etl.endpoints import Endpoint
 
-from .base import BaseCollector
+from .base import MAX_PAGE_WORKERS, APIFetchError, MonthlyCollector
 
 logger = logging.getLogger(__name__)
 
 
-class ExpensesCollector(BaseCollector):
+class ExpensesCollector(MonthlyCollector):
     """Collector for public expense (despesa) data with parallel fetching."""
 
-    def run(self, municipio_id: str, year: int) -> int:
-        """
-        Run the expense collection for a municipality and year.
+    collector_name = "Despesas"
 
-        Returns:
-            Total number of records collected.
-        """
-        logger.info(">>> Starting Despesas (Financial) - Parallel Mode")
-
-        # Fetch all 12 months in parallel, each with parallel pagination
-        all_records = self._fetch_all_months_parallel(municipio_id, year)
-
-        if not all_records:
-            logger.info("Despesas: No records found.")
-            return 0
-
-        # Bulk save all records at once
-        total = self._save_all(all_records, municipio_id, year)
-        logger.info("Despesas completed: %d records.", total)
-        return total
-
-    def _fetch_all_months_parallel(
-        self, municipio_id: str, year: int
-    ) -> list[dict[str, Any]]:
-        """
-        Fetch all 12 months in parallel. Each month fetches all pages in parallel.
-
-        Returns:
-            Flattened list of all expense records.
-        """
-        all_records: list[dict[str, Any]] = []
-
-        # Submit all 12 months to thread pool
-        with ThreadPoolExecutor(max_workers=12) as executor:
-            futures = {
-                executor.submit(
-                    self._fetch_month_with_pagination, municipio_id, year, month
-                ): month
-                for month in range(1, 13)
-            }
-
-            for future in as_completed(futures):
-                month = futures[future]
-                try:
-                    month_records = future.result()
-                    if month_records:
-                        all_records.extend(month_records)
-                        logger.info(
-                            "Month %d: Collected %d records", month, len(month_records)
-                        )
-                except Exception as e:
-                    logger.error("Failed to fetch month %d: %s", month, e)
-
-        return all_records
-
-    def _fetch_month_with_pagination(
-        self, municipio_id: str, year: int, month: int
-    ) -> list[dict[str, Any]]:
-        """
-        Fetch a single month with parallel pagination.
-
-        Strategy:
-        1. Fetch page 0 to get total count
-        2. Calculate all page offsets
-        3. Fetch all remaining pages in parallel
-        """
+    def _fetch_month(self, municipio_id: str, year: int, month: int) -> list[dict]:
+        """Fetch a single month with parallel pagination."""
         month_ref = f"{year}{month:02d}"
         url = self.client.build_url(Endpoint.DESPESAS)
 
@@ -105,45 +43,54 @@ class ExpensesCollector(BaseCollector):
         if not first_batch:
             return []
 
-        logger.info("Month %s: Found %d records", month_ref, total)
+        logger.debug("Month %s: Found %d records", month_ref, total)
 
         # If all records fit in first page, done
         if total <= 100:
             return first_batch
 
-        # Calculate remaining offsets
-        offsets = list(range(100, total, 100))
+        # Fetch remaining pages in parallel
+        return self._fetch_remaining_pages(
+            url, municipio_id, year, month_ref, first_batch, total
+        )
 
-        # Fetch all remaining pages in parallel (within this month)
-        all_records = list(first_batch)
-
-        with ThreadPoolExecutor(max_workers=10) as page_executor:
-            page_futures = {
-                page_executor.submit(
-                    self._fetch_page, url, municipio_id, year, month_ref, offset
-                ): offset
-                for offset in offsets
-            }
-
-            for future in as_completed(page_futures):
-                try:
-                    page_records = future.result()
-                    if page_records:
-                        all_records.extend(page_records)
-                except Exception as e:
-                    offset = page_futures[future]
-                    logger.warning("Failed to fetch page offset %d: %s", offset, e)
-
-        return all_records
-
-    def _fetch_page(
+    def _fetch_remaining_pages(
         self,
         url: str,
         municipio_id: str,
         year: int,
         month_ref: str,
-        offset: int,
-    ) -> list[dict[str, Any]]:
+        first_page: list[dict],
+        total: int,
+    ) -> list[dict]:
+        """Fetch all remaining pages after the first one."""
+        all_records = list(first_page)
+        offsets = list(range(100, total, 100))
+
+        with ThreadPoolExecutor(max_workers=MAX_PAGE_WORKERS) as executor:
+            futures = {
+                executor.submit(
+                    self._fetch_page, url, municipio_id, year, month_ref, offset
+                ): offset
+                for offset in offsets
+            }
+
+            for future in as_completed(futures):
+                offset = futures[future]
+                try:
+                    page_records = future.result()
+                    if page_records:
+                        all_records.extend(page_records)
+                except APIFetchError as e:
+                    logger.warning("API error at offset %d: %s", offset, e)
+                except Exception:
+                    logger.exception("Unexpected error at offset %d", offset)
+
+        return all_records
+
+    def _fetch_page(
+        self, url: str, municipio_id: str, year: int, month_ref: str, offset: int
+    ) -> list[dict]:
         """Fetch a single page of data."""
         params = {
             "codigo_municipio": municipio_id,
@@ -158,12 +105,10 @@ class ExpensesCollector(BaseCollector):
             return records
         return []
 
-    def _extract_records_and_total(
-        self, data: dict[str, Any]
-    ) -> tuple[list[dict[str, Any]], int]:
+    def _extract_records_and_total(self, data: dict) -> tuple[list[dict], int]:
         """Extract records list and total count from API response."""
         total = 0
-        records: list[dict[str, Any]] = []
+        records: list = []
 
         if "rsp" in data and "_content" in data["rsp"]:
             content = data["rsp"]["_content"]
@@ -184,12 +129,7 @@ class ExpensesCollector(BaseCollector):
 
         return records, total
 
-    def _save_all(
-        self,
-        all_records: list[dict[str, Any]],
-        municipio_id: str,
-        year: int,
-    ) -> int:
+    def _save_all(self, all_records: list[dict], municipio_id: str, year: int) -> int:
         """Save all records to database in one bulk insert."""
         if not all_records:
             return 0
@@ -237,7 +177,6 @@ class ExpensesCollector(BaseCollector):
             "raw_data",
         ]
 
-        # Columns to update on conflict (all except id)
         update_columns = [
             "valor_empenhado",
             "valor_liquidado",

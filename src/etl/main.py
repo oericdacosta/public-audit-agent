@@ -10,97 +10,54 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
-
-import duckdb
+from typing import Any
 
 from src.config import get_settings
 from src.etl.client import TCEClient
 from src.etl.collectors.despesas import ExpensesCollector
+from src.etl.collectors.extra_orcamentaria import (
+    DespesaExtraOrcamentariaCollector,
+    ReceitaExtraOrcamentariaCollector,
+)
 from src.etl.collectors.generic import GenericCollector
 from src.etl.collectors.licitacoes import TendersCollector
 from src.etl.collectors.receitas import RevenueCollector
 from src.etl.db_manager import DatabaseManager
 from src.etl.endpoints import Endpoint
+from src.etl.metadata import ETLMetadataManager
 
-# Logging Configuration
-_log_dir = Path(__file__).parent.parent.parent / "logs"
-_log_dir.mkdir(parents=True, exist_ok=True)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(_log_dir / "etl.log"),
-        logging.StreamHandler(),
-    ],
-)
 logger = logging.getLogger(__name__)
 
 
-ENDPOINT_TO_TABLE: Dict[Endpoint, str] = {
-    Endpoint.DESPESAS: "despesas",
-    Endpoint.RECEITAS: "receitas",
-    Endpoint.LICITACOES: "licitacoes",
-    Endpoint.MUNICIPIOS: "municipios",
-    Endpoint.ORGAOS: "orgaos",
-    Endpoint.UNIDADES_ORCAMENTARIAS: "unidades_orcamentarias",
-    Endpoint.FUNCOES: "funcoes",
-    Endpoint.ORDENADORES: "ordenadores",
-    Endpoint.CONTAS_BANCARIAS: "contas_bancarias",
-    Endpoint.PROGRAMAS: "programas",
-    Endpoint.PROJETOS_ATIVIDADES: "orcamento_despesa",
-    Endpoint.ORCAMENTO_RECEITA: "orcamento_receita",
-}
+def setup_logging() -> None:
+    """Configure logging for ETL process."""
+    log_dir = Path(__file__).parent.parent.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler(log_dir / "etl.log"),
+            logging.StreamHandler(),
+        ],
+    )
 
 
-def get_sync_status(
-    db_manager: DatabaseManager, municipality_id: str, year: int, source: str
-) -> Optional[str]:
-    """Check if a specific year/source has been successfully ingested."""
-    try:
-        with db_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT status FROM etl_metadata
-                WHERE municipio_id = ? AND year = ? AND source = ?
-                """,
-                (municipality_id, year, source),
-            )
-            row = cursor.fetchone()
-            return row[0] if row else None
-    except (duckdb.Error, duckdb.CatalogException):
-        return None
-
-
-def update_sync_status(
-    db_manager: DatabaseManager,
-    municipality_id: str,
-    year: int,
-    source: str,
-    status: str,
-    count: int = 0,
-) -> None:
-    """Update the execution state in the database."""
-    # Import here to avoid circular dependency
-    from src.etl.collectors.base import _DB_WRITE_LOCK
-
-    with _DB_WRITE_LOCK:
-        with db_manager.get_connection() as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO etl_metadata
-                (municipio_id, year, source, status, record_count, last_updated)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """,
-                (municipality_id, year, source, status, count),
-            )
-            conn.commit()
+# Specialized collectors that need custom processing logic
+SPECIALIZED_ENDPOINTS: frozenset[Endpoint] = frozenset(
+    {
+        Endpoint.LICITACOES,
+        Endpoint.DESPESAS,
+        Endpoint.RECEITAS,
+        Endpoint.BALANCETE_DESPESA_EXTRA,
+        Endpoint.BALANCETE_RECEITA_EXTRA,
+    }
+)
 
 
 def process_task(
-    db_manager: DatabaseManager,
+    metadata_mgr: ETLMetadataManager,
     municipality_id: str,
     year: int,
     source_key: str,
@@ -110,31 +67,46 @@ def process_task(
     process_id = f"{source_key.upper()}:{year}"
 
     # Check Idempotency
-    current_status = get_sync_status(db_manager, municipality_id, year, source_key)
+    current_status = metadata_mgr.get_status(municipality_id, year, source_key)
     if current_status == "COMPLETED":
         return f"⏭️  Skipped {process_id} (Already Completed)"
 
     # Start
-    update_sync_status(db_manager, municipality_id, year, source_key, "STARTED")
+    metadata_mgr.update_status(municipality_id, year, source_key, "STARTED")
     try:
         logger.info("🚀 Starting %s", process_id)
         count = collector.run(municipality_id, year)
 
         # Success
-        update_sync_status(
-            db_manager, municipality_id, year, source_key, "COMPLETED", count
+        metadata_mgr.update_status(
+            municipality_id, year, source_key, "COMPLETED", count
         )
         return f"✅ Finished {process_id} ({count} items)"
 
     except Exception as e:
         logger.error("Failed %s: %s", process_id, e)
-        update_sync_status(db_manager, municipality_id, year, source_key, "FAILED")
+        metadata_mgr.update_status(municipality_id, year, source_key, "FAILED")
         return f"⚠️ Failed {process_id}: {str(e)}"
 
 
-def run_etl(
-    municipality_id: Optional[str] = None, manual_year: Optional[str] = None
-) -> None:
+def _create_specialized_collectors(
+    db_manager: DatabaseManager, client: TCEClient
+) -> dict[Endpoint, Any]:
+    """Create specialized collectors that need custom processing logic."""
+    return {
+        Endpoint.LICITACOES: TendersCollector(db_manager, client),
+        Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
+        Endpoint.RECEITAS: RevenueCollector(db_manager, client),
+        Endpoint.BALANCETE_DESPESA_EXTRA: DespesaExtraOrcamentariaCollector(
+            db_manager, client
+        ),
+        Endpoint.BALANCETE_RECEITA_EXTRA: ReceitaExtraOrcamentariaCollector(
+            db_manager, client
+        ),
+    }
+
+
+def run_etl(municipality_id: str | None = None, manual_year: str | None = None) -> None:
     """
     Run the ETL process for a municipality using dynamic endpoint discovery.
 
@@ -164,43 +136,36 @@ def run_etl(
     db_manager = DatabaseManager()
     db_manager.initialize_schema()
     client = TCEClient()
+    metadata_mgr = ETLMetadataManager(db_manager)
 
-    # Specialized Collectors (Strategy Pattern)
-    specialized_collectors: Dict[Endpoint, Any] = {
-        Endpoint.LICITACOES: TendersCollector(db_manager, client),
-        Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
-        Endpoint.RECEITAS: RevenueCollector(db_manager, client),
-    }
+    # Create specialized collectors
+    specialized_collectors = _create_specialized_collectors(db_manager, client)
 
     tasks = []
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         for year in years:
             for endpoint in Endpoint:
-                # 1. Resolve Table Name
-                if endpoint not in ENDPOINT_TO_TABLE:
+                # Skip endpoints without table mapping
+                if not endpoint.table_name:
                     logger.warning(
-                        f"Endpoint {endpoint.name} has no mapped table. Skipping."
+                        "Endpoint %s has no mapped table. Skipping.", endpoint.name
                     )
                     continue
 
-                table_name = ENDPOINT_TO_TABLE[endpoint]
-
-                # 2. Resolve Collector Strategy
-                if endpoint in specialized_collectors:
+                # Resolve collector strategy
+                if endpoint in SPECIALIZED_ENDPOINTS:
                     collector = specialized_collectors[endpoint]
                 else:
-                    collector = GenericCollector(
-                        db_manager, client, endpoint, table_name
-                    )
+                    collector = GenericCollector(db_manager, client, endpoint)
 
                 tasks.append(
                     executor.submit(
                         process_task,
-                        db_manager,
+                        metadata_mgr,
                         municipality_id,
                         year,
-                        table_name,
+                        endpoint.table_name,
                         collector,
                     )
                 )
@@ -213,6 +178,7 @@ def run_etl(
 
 
 if __name__ == "__main__":
+    setup_logging()
     parser = argparse.ArgumentParser(description="CivicAudit Professional ETL")
     parser.add_argument("--municipality", help="Override municipality code (e.g. 162)")
     parser.add_argument("--year", help="Override Rolling Window with single year")

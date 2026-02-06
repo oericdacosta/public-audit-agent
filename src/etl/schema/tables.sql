@@ -1,0 +1,119 @@
+-- =============================================================================
+-- ETL Schema Definition
+-- All table definitions for the TCE data warehouse
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- Tenders (Licitações)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS licitacoes (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    numero_licitacao TEXT,
+    numero_processo TEXT,
+    objeto_licitacao TEXT,
+    modalidade_licitacao TEXT,
+    data_realizacao_licitacao TEXT,
+    valor_estimado DOUBLE,
+    situacao_licitacao TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_lic_municipio ON licitacoes(municipio_id);
+CREATE INDEX IF NOT EXISTS idx_lic_objeto ON licitacoes(objeto_licitacao);
+CREATE INDEX IF NOT EXISTS idx_lic_mun_exerc ON licitacoes(municipio_id, exercicio_orcamento);
+
+
+-- -----------------------------------------------------------------------------
+-- Expenses (Despesas)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS despesas (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    exercicio_orcamento TEXT,
+    mes_referencia TEXT,
+    codigo_orgao TEXT,
+    codigo_unidade_orcamentaria TEXT,
+    codigo_funcao TEXT,
+    codigo_subfuncao TEXT,
+    codigo_programa TEXT,
+    codigo_elemento_despesa TEXT,
+    valor_empenhado DOUBLE,
+    valor_liquidado DOUBLE,
+    valor_pago DOUBLE,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_desp_municipio ON despesas(municipio_id);
+CREATE INDEX IF NOT EXISTS idx_desp_mun_exerc ON despesas(municipio_id, exercicio_orcamento);
+
+
+-- -----------------------------------------------------------------------------
+-- Revenue (Receitas)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS receitas (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    exercicio_orcamento TEXT,
+    mes_referencia TEXT,
+    codigo_orgao TEXT,
+    codigo_unidade_orcamentaria TEXT,
+    codigo_receita TEXT,
+    descricao_receita TEXT,
+    valor_orcado DOUBLE,
+    valor_arrecadado DOUBLE,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rec_municipio ON receitas(municipio_id);
+CREATE INDEX IF NOT EXISTS idx_rec_mun_exerc ON receitas(municipio_id, exercicio_orcamento);
+
+
+-- -----------------------------------------------------------------------------
+-- Extra-Budgetary Expenses (Despesas Extra-Orçamentárias)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS balancete_despesa_extra (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    exercicio_orcamento TEXT,
+    mes_referencia TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_dextra_municipio ON balancete_despesa_extra(municipio_id);
+CREATE INDEX IF NOT EXISTS idx_dextra_mun_exerc ON balancete_despesa_extra(municipio_id, exercicio_orcamento);
+
+
+-- -----------------------------------------------------------------------------
+-- Extra-Budgetary Revenue (Receitas Extra-Orçamentárias)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS balancete_receita_extra (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    exercicio_orcamento TEXT,
+    mes_referencia TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rextra_municipio ON balancete_receita_extra(municipio_id);
+CREATE INDEX IF NOT EXISTS idx_rextra_mun_exerc ON balancete_receita_extra(municipio_id, exercicio_orcamento);
+
+
+-- -----------------------------------------------------------------------------
+-- ETL Metadata (Execution Tracking)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS etl_metadata (
+    municipio_id TEXT,
+    year INTEGER,
+    source TEXT,
+    status TEXT,
+    record_count INTEGER,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (municipio_id, year, source)
+);

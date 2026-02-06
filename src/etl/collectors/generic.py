@@ -13,7 +13,9 @@ from src.etl.endpoints import Endpoint
 from src.etl.utils.masking import sanitize_record
 
 # Endpoints that don't require any parameters (global lookups)
-NO_PARAMS_ENDPOINTS = frozenset({Endpoint.MUNICIPIOS, Endpoint.FUNCOES})
+NO_PARAMS_ENDPOINTS = frozenset(
+    {Endpoint.MUNICIPIOS, Endpoint.FUNCOES, Endpoint.NEGOCIANTES}
+)
 
 # Endpoints that require pagination parameters and looping
 PAGINATED_ENDPOINTS = frozenset(
@@ -25,6 +27,7 @@ PAGINATED_ENDPOINTS = frozenset(
         Endpoint.NOTAS_PAGAMENTOS,
         Endpoint.ITENS_NOTAS_FISCAIS,
         Endpoint.AGENTES_PUBLICOS,
+        Endpoint.LIQUIDACOES,
     }
 )
 

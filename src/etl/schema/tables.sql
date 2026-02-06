@@ -294,3 +294,60 @@ CREATE TABLE IF NOT EXISTS agentes_publicos (
 CREATE INDEX IF NOT EXISTS idx_ap_mun_exerc ON agentes_publicos(municipio_id, exercicio_orcamento);
 CREATE INDEX IF NOT EXISTS idx_ap_nome ON agentes_publicos(nome_servidor);
 CREATE INDEX IF NOT EXISTS idx_ap_cargo ON agentes_publicos(cargo);
+
+-- -----------------------------------------------------------------------------
+-- Expense Cycle (Empenho -> Liquidação)
+-- -----------------------------------------------------------------------------
+
+-- Notas de Empenho (Commitment Notes)
+CREATE TABLE IF NOT EXISTS notas_empenho (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    numero_empenho TEXT,
+    data_emissao_empenho DATE,
+    modalidade_empenho TEXT,
+    descricao_empenho TEXT,
+    valor_empenhado DOUBLE,
+    numero_documento_negociante TEXT,  -- Masked for LGPD
+    nome_negociante TEXT,
+    cd_cpf_gestor TEXT,  -- Masked for LGPD
+    cpf_gestor_contrato TEXT,  -- Masked for LGPD
+    numero_licitacao TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ne_mun_exerc ON notas_empenho(municipio_id, exercicio_orcamento);
+CREATE INDEX IF NOT EXISTS idx_ne_numero ON notas_empenho(numero_empenho);
+CREATE INDEX IF NOT EXISTS idx_ne_negociante ON notas_empenho(nome_negociante);
+
+-- Liquidações (Settlement Confirmations)
+CREATE TABLE IF NOT EXISTS liquidacoes (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    numero_empenho TEXT,
+    data_liquidacao DATE,
+    valor_liquidado DOUBLE,
+    nome_responsavel_liquidacao TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_liq_mun_exerc ON liquidacoes(municipio_id, exercicio_orcamento);
+CREATE INDEX IF NOT EXISTS idx_liq_empenho ON liquidacoes(numero_empenho);
+
+-- Negociantes (Vendor Lookup)
+CREATE TABLE IF NOT EXISTS negociantes (
+    id TEXT PRIMARY KEY,
+    numero_documento_negociante TEXT,  -- Masked for LGPD (if CPF)
+    nome_negociante TEXT,
+    endereco_negociante TEXT,  -- Masked for LGPD
+    fone_negociante TEXT,  -- Masked for LGPD
+    cep_negociante TEXT,  -- Masked for LGPD
+    nome_municipio_negociante TEXT,
+    uf_negociante TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_neg_nome ON negociantes(nome_negociante);
+CREATE INDEX IF NOT EXISTS idx_neg_doc ON negociantes(numero_documento_negociante);

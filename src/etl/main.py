@@ -144,7 +144,7 @@ def run_etl(municipality_id: str | None = None, manual_year: str | None = None) 
     if manual_year:
         years = [int(manual_year)]
     else:
-        current_year = datetime.now().year
+        current_year = datetime.now().year - 1
         lookback = settings.get("audit", {}).get("data_retention_years", 5)
         years = list(range(current_year, current_year - lookback, -1))
 

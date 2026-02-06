@@ -108,15 +108,29 @@ CREATE INDEX IF NOT EXISTS idx_rextra_mun_exerc ON balancete_receita_extra(munic
 -- Detailed Revenue (Talões de Receitas)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS taloes_receitas (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     municipio_id TEXT,
     exercicio_orcamento TEXT,
-    numero_talao TEXT,
-    data_talao DATE,
-    data_referencia TEXT,
+    codigo_municipio TEXT,
+    codigo_orgao TEXT,
+    codigo_unidade TEXT,
+    codigo_rubrica TEXT,
+    tipo_fonte TEXT,
+    codigo_fonte TEXT,
+    numero_talao_receita TEXT,
+    data_talao_receita TIMESTAMP,
+    data_referencia INTEGER,
     valor_receita DOUBLE,
     historico_receita TEXT,
-    nome_contribuinte TEXT,
+    tipo_doc_contribuinte TEXT,
+    numero_doc_contribuinte TEXT,
+    nome_razao_social_contribuinte TEXT,
+    numero_banco TEXT,
+    numero_agencia_bancaria TEXT,
+    numero_conta_corrente TEXT,
+    numero_doc_credito TEXT,
+    dt_credito_tr TIMESTAMP,
+    tipo_doc_credito INTEGER,
     raw_data JSON,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -129,15 +143,27 @@ CREATE INDEX IF NOT EXISTS idx_trec_mun_exerc ON taloes_receitas(municipio_id, e
 -- Detailed Extra Revenue (Talões Extras)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS taloes_extras (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     municipio_id TEXT,
     exercicio_orcamento TEXT,
-    numero_talao TEXT,
-    data_talao DATE,
-    data_referencia TEXT,
-    valor_receita DOUBLE,
-    historico_receita TEXT,
-    nome_contribuinte TEXT,
+    codigo_municipio INTEGER,
+    codigo_orgao INTEGER,
+    codigo_unidade TEXT,
+    cd_conta_ctx INTEGER,
+    nu_talao_receita_tx TEXT,
+    dt_talao_receita_tx TIMESTAMP,
+    dt_ref_tx INTEGER,
+    vl_receita_tx DOUBLE,
+    de_hist_receita_tx TEXT,
+    tp_doc_contrib_tx TEXT,
+    nu_doc_contrib_tx TEXT,
+    nm_razao_social_contrib_tx TEXT,
+    nu_banco_tx TEXT,
+    nu_agencia_bancaria_tx TEXT,
+    nu_conta_corrente_tx TEXT,
+    nu_doc_credito_tx TEXT,
+    dt_credito_tx TIMESTAMP,
+    tp_doc_credito_tx INTEGER,
     raw_data JSON,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -151,7 +177,7 @@ CREATE INDEX IF NOT EXISTS idx_textra_mun_exerc ON taloes_extras(municipio_id, e
 
 -- Contratos
 CREATE TABLE IF NOT EXISTS contratos (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     municipio_id TEXT,
     numero_contrato TEXT,
     data_contrato DATE,
@@ -167,7 +193,7 @@ CREATE INDEX IF NOT EXISTS idx_contratos_mun ON contratos(municipio_id);
 
 -- Contratados
 CREATE TABLE IF NOT EXISTS contratados (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     municipio_id TEXT,
     numero_contrato TEXT,
     data_contrato DATE,
@@ -180,7 +206,7 @@ CREATE INDEX IF NOT EXISTS idx_contratados_mun ON contratados(municipio_id);
 
 -- Licitantes (Participants)
 CREATE TABLE IF NOT EXISTS licitantes (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     municipio_id TEXT,
     numero_licitacao TEXT,
     data_realizacao_licitacao DATE,
@@ -193,7 +219,7 @@ CREATE INDEX IF NOT EXISTS idx_licitantes_mun ON licitantes(municipio_id);
 
 -- Itens Licitacoes
 CREATE TABLE IF NOT EXISTS itens_licitacoes (
-    id SERIAL PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     municipio_id TEXT,
     numero_licitacao TEXT,
     data_realizacao_licitacao DATE,

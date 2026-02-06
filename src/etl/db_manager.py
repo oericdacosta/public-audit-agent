@@ -200,26 +200,39 @@ class DatabaseManager:
                 )
 
                 columns = [
-                    col[0]
+                    col[1]
                     for col in conn.execute(
                         f"PRAGMA table_info('{table_name}')"
                     ).fetchall()
                 ]
 
-                if "id" in columns and "id" in df.columns:
-                    update_cols = [c for c in df.columns if c != "id"]
+                # Filter DataFrame to only columns that exist in the table
+                valid_cols = [c for c in df.columns if c in columns]
+                if not valid_cols:
+                    logger.warning(
+                        f"No matching columns between data and table {table_name}"
+                    )
+                    logger.debug(f"DataFrame columns: {list(df.columns)}")
+                    logger.debug(f"Table columns: {columns}")
+                    return
+
+                df_cols = ", ".join(valid_cols)
+
+                if "id" in columns and "id" in valid_cols:
+                    update_cols = [c for c in valid_cols if c != "id"]
                     update_set = ", ".join(
                         [f"{col} = EXCLUDED.{col}" for col in update_cols]
                     )
 
                     conn.execute(
-                        f"INSERT INTO {table_name} "  # nosec B608
-                        f"SELECT * FROM df "
+                        f"INSERT INTO {table_name} ({df_cols}) "  # nosec B608
+                        f"SELECT {df_cols} FROM df "
                         f"ON CONFLICT (id) DO UPDATE SET {update_set}"
                     )
                 else:
                     conn.execute(
-                        f"INSERT INTO {table_name} SELECT * FROM df"  # nosec B608
+                        f"INSERT INTO {table_name} ({df_cols}) "  # nosec B608
+                        f"SELECT {df_cols} FROM df"
                     )
 
                 conn.commit()

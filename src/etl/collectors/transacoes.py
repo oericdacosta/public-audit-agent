@@ -60,6 +60,12 @@ class TransacoesCollector(MonthlyCollector):
         # Update collector name for logging
         self.collector_name = f"Transações({endpoint.name})"
 
+    # Endpoints that DON'T support quantidade/deslocamento pagination
+    NO_PAGINATION_ENDPOINTS = {
+        Endpoint.LICITACOES,
+        Endpoint.ITENS_LICITACOES,
+    }
+
     def _fetch_month_paginated(
         self, municipio_id: str, date_range: str, date_param: str
     ) -> list[dict]:
@@ -68,13 +74,19 @@ class TransacoesCollector(MonthlyCollector):
         limit = 100
         offset = 0
 
+        # Check if this endpoint supports pagination
+        supports_pagination = self.endpoint not in self.NO_PAGINATION_ENDPOINTS
+
         while True:
             params = {
                 "codigo_municipio": municipio_id,
                 date_param: date_range,
-                "quantidade": str(limit),
-                "deslocamento": str(offset),
             }
+
+            # Only add pagination params if supported
+            if supports_pagination:
+                params["quantidade"] = str(limit)
+                params["deslocamento"] = str(offset)
 
             url = self.client.build_url(self.endpoint)
             data = self.client.fetch_json(url, params)
@@ -91,12 +103,30 @@ class TransacoesCollector(MonthlyCollector):
                 if self.endpoint.response_key and self.endpoint.response_key in data:
                     batch = cast(list[dict], data[self.endpoint.response_key])
                 else:
-                    batch = cast(list[dict], data.get("data", data.get("rows", [data])))
+                    raw_batch: list[dict] | dict = cast(
+                        list[dict] | dict, data.get("data", data.get("rows", [data]))
+                    )
+                    # Handle nested data structure
+                    if isinstance(raw_batch, dict):
+                        if "data" in raw_batch and isinstance(raw_batch["data"], list):
+                            batch = cast(list[dict], raw_batch["data"])
+                        elif "rows" in raw_batch and isinstance(
+                            raw_batch["rows"], list
+                        ):
+                            batch = cast(list[dict], raw_batch["rows"])
+                        else:
+                            batch = [cast(dict, raw_batch)]
+                    else:
+                        batch = cast(list[dict], raw_batch)
 
             if not batch:
                 break
 
             all_records.extend(batch)
+
+            # For endpoints without pagination, we get all records in one request
+            if not supports_pagination:
+                break
 
             if len(batch) < limit:
                 break

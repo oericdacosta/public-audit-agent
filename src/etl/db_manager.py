@@ -42,6 +42,10 @@ ALLOWED_TABLES: frozenset[str] = frozenset(
         "orcamento_receita",
         "taloes_receitas",
         "taloes_extras",
+        "contratos",
+        "contratados",
+        "itens_licitacoes",
+        "licitantes",
     }
 )
 

@@ -20,7 +20,7 @@ from src.etl.collectors.extra_orcamentaria import (
     ReceitaExtraOrcamentariaCollector,
 )
 from src.etl.collectors.generic import GenericCollector
-from src.etl.collectors.licitacoes import TendersCollector
+from src.etl.collectors.licitacoes import LicitacoesCollector
 from src.etl.collectors.receitas import RevenueCollector
 from src.etl.db_manager import DatabaseManager
 from src.etl.endpoints import Endpoint
@@ -52,6 +52,10 @@ SPECIALIZED_ENDPOINTS: frozenset[Endpoint] = frozenset(
         Endpoint.RECEITAS,
         Endpoint.BALANCETE_DESPESA_EXTRA,
         Endpoint.BALANCETE_RECEITA_EXTRA,
+        Endpoint.CONTRATOS,
+        Endpoint.CONTRATADOS,
+        Endpoint.ITENS_LICITACOES,
+        Endpoint.LICITANTES,
     }
 )
 
@@ -94,7 +98,19 @@ def _create_specialized_collectors(
 ) -> dict[Endpoint, Any]:
     """Create specialized collectors that need custom processing logic."""
     return {
-        Endpoint.LICITACOES: TendersCollector(db_manager, client),
+        Endpoint.LICITACOES: LicitacoesCollector(
+            db_manager, client, Endpoint.LICITACOES
+        ),
+        Endpoint.CONTRATOS: LicitacoesCollector(db_manager, client, Endpoint.CONTRATOS),
+        Endpoint.CONTRATADOS: LicitacoesCollector(
+            db_manager, client, Endpoint.CONTRATADOS
+        ),
+        Endpoint.ITENS_LICITACOES: LicitacoesCollector(
+            db_manager, client, Endpoint.ITENS_LICITACOES
+        ),
+        Endpoint.LICITANTES: LicitacoesCollector(
+            db_manager, client, Endpoint.LICITANTES
+        ),
         Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
         Endpoint.RECEITAS: RevenueCollector(db_manager, client),
         Endpoint.BALANCETE_DESPESA_EXTRA: DespesaExtraOrcamentariaCollector(

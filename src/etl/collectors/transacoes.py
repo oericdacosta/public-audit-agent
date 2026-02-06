@@ -18,9 +18,9 @@ from src.etl.endpoints import Endpoint
 logger = logging.getLogger(__name__)
 
 
-class LicitacoesCollector(MonthlyCollector):
+class TransacoesCollector(MonthlyCollector):
     """
-    Generalized collector for procurement-related endpoints.
+    Generalized collector for transactional endpoints (Procurement, Empenhos, etc.).
 
     These endpoints require:
     1. Month-by-month fetching (to avoid timeouts on large intervals)
@@ -28,7 +28,7 @@ class LicitacoesCollector(MonthlyCollector):
     3. Pagination (looping through 'quantidade' and 'deslocamento')
     """
 
-    collector_name = "Licitações"
+    collector_name = "Transações"
 
     # Map each endpoint to its specific date parameter name
     DATE_PARAM_MAP = {
@@ -37,6 +37,7 @@ class LicitacoesCollector(MonthlyCollector):
         Endpoint.LICITANTES: "data_realizacao_licitacao",
         Endpoint.CONTRATOS: "data_contrato",
         Endpoint.CONTRATADOS: "data_contrato",
+        Endpoint.NOTAS_EMPENHO: "data_emissao_empenho",
     }
 
     def __init__(
@@ -46,18 +47,18 @@ class LicitacoesCollector(MonthlyCollector):
         endpoint: Endpoint,
     ) -> None:
         """
-        Initialize the procurement collector.
+        Initialize the transactions collector.
 
         Args:
             db_manager: Database manager instance
             client: HTTP Client instance
-            endpoint: The specific endpoint to collect (contracts, bidders, etc.)
+            endpoint: The specific endpoint to collect
         """
         # Initialize BaseCollector (grandparent) attributes
         super().__init__(db_manager, client)
         self.endpoint = endpoint
         # Update collector name for logging
-        self.collector_name = f"Licitações({endpoint.name})"
+        self.collector_name = f"Transações({endpoint.name})"
 
     def _fetch_month_paginated(
         self, municipio_id: str, date_range: str, date_param: str
@@ -144,6 +145,9 @@ class LicitacoesCollector(MonthlyCollector):
                 rec_id_parts.append(
                     str(item.get("numero_sequencial_item_licitacao", "unk"))
                 )
+            elif self.endpoint == Endpoint.NOTAS_EMPENHO:
+                rec_id_parts.append(str(item.get("numero_empenho", "unk")))
+                rec_id_parts.append(str(item.get("codigo_orgao", "unk")))
 
             rec_id_parts.append(str(year))
             item_copy["id"] = "_".join(rec_id_parts)

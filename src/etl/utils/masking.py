@@ -44,6 +44,17 @@ SENSITIVE_FIELDS: dict[str, list[str]] = {
     "contratados": ["documento_negociante"],
     "licitantes": ["numero_documento_negociante"],
     "notas_fiscais": ["nu_doc_emitente_nf"],
+    "notas_empenho": [
+        "numero_documento_negociante",
+        "cd_cpf_gestor",
+        "cpf_gestor_contrato",
+    ],
+    "negociantes": [
+        "numero_documento_negociante",
+        "endereco_negociante",
+        "fone_negociante",
+        "cep_negociante",
+    ],
 }
 
 

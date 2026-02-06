@@ -20,8 +20,8 @@ from src.etl.collectors.extra_orcamentaria import (
     ReceitaExtraOrcamentariaCollector,
 )
 from src.etl.collectors.generic import GenericCollector
-from src.etl.collectors.licitacoes import LicitacoesCollector
 from src.etl.collectors.receitas import RevenueCollector
+from src.etl.collectors.transacoes import TransacoesCollector
 from src.etl.db_manager import DatabaseManager
 from src.etl.endpoints import Endpoint
 from src.etl.metadata import ETLMetadataManager
@@ -56,6 +56,7 @@ SPECIALIZED_ENDPOINTS: frozenset[Endpoint] = frozenset(
         Endpoint.CONTRATADOS,
         Endpoint.ITENS_LICITACOES,
         Endpoint.LICITANTES,
+        Endpoint.NOTAS_EMPENHO,
     }
 )
 
@@ -96,20 +97,22 @@ def process_task(
 def _create_specialized_collectors(
     db_manager: DatabaseManager, client: TCEClient
 ) -> dict[Endpoint, Any]:
-    """Create specialized collectors that need custom processing logic."""
     return {
-        Endpoint.LICITACOES: LicitacoesCollector(
+        Endpoint.LICITACOES: TransacoesCollector(
             db_manager, client, Endpoint.LICITACOES
         ),
-        Endpoint.CONTRATOS: LicitacoesCollector(db_manager, client, Endpoint.CONTRATOS),
-        Endpoint.CONTRATADOS: LicitacoesCollector(
+        Endpoint.CONTRATOS: TransacoesCollector(db_manager, client, Endpoint.CONTRATOS),
+        Endpoint.CONTRATADOS: TransacoesCollector(
             db_manager, client, Endpoint.CONTRATADOS
         ),
-        Endpoint.ITENS_LICITACOES: LicitacoesCollector(
+        Endpoint.ITENS_LICITACOES: TransacoesCollector(
             db_manager, client, Endpoint.ITENS_LICITACOES
         ),
-        Endpoint.LICITANTES: LicitacoesCollector(
+        Endpoint.LICITANTES: TransacoesCollector(
             db_manager, client, Endpoint.LICITANTES
+        ),
+        Endpoint.NOTAS_EMPENHO: TransacoesCollector(
+            db_manager, client, Endpoint.NOTAS_EMPENHO
         ),
         Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
         Endpoint.RECEITAS: RevenueCollector(db_manager, client),

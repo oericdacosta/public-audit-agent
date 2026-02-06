@@ -129,6 +129,28 @@ class Endpoint(Enum):
         "agentes_publicos",
     )
 
+    # Expense Cycle Endpoints (Empenho -> Liquidação)
+    NOTAS_EMPENHO = (
+        "/notas_empenho",
+        APIBase.DEFAULT,
+        "notas_empenho",
+        "notas_empenho",
+    )
+    LIQUIDACOES = (
+        "/liquidacoes",
+        APIBase.DEFAULT,
+        "liquidacoes",
+        "liquidacoes",
+    )
+
+    # Vendor Lookup Table
+    NEGOCIANTES = (
+        "/negociantes",
+        APIBase.DEFAULT,
+        "negociantes",
+        "negociantes",
+    )
+
     # Dimension/Lookup Tables
     MUNICIPIOS = (
         "/municipios",

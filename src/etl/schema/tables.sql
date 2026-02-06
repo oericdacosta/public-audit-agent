@@ -142,8 +142,71 @@ CREATE TABLE IF NOT EXISTS taloes_extras (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_textra_municipio ON taloes_extras(municipio_id);
 CREATE INDEX IF NOT EXISTS idx_textra_mun_exerc ON taloes_extras(municipio_id, exercicio_orcamento);
+
+
+-- -----------------------------------------------------------------------------
+-- Procurement Details (Contratos, Contratados, Licitantes, Itens)
+-- -----------------------------------------------------------------------------
+
+-- Contratos
+CREATE TABLE IF NOT EXISTS contratos (
+    id SERIAL PRIMARY KEY,
+    municipio_id TEXT,
+    numero_contrato TEXT,
+    data_contrato DATE,
+    data_inicio_vigencia DATE,
+    data_fim_vigencia DATE,
+    valor_total DOUBLE,
+    descricao_objeto TEXT,
+    tipo_contrato TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_contratos_mun ON contratos(municipio_id);
+
+-- Contratados
+CREATE TABLE IF NOT EXISTS contratados (
+    id SERIAL PRIMARY KEY,
+    municipio_id TEXT,
+    numero_contrato TEXT,
+    data_contrato DATE,
+    documento_negociante TEXT,
+    nome_negociante TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_contratados_mun ON contratados(municipio_id);
+
+-- Licitantes (Participants)
+CREATE TABLE IF NOT EXISTS licitantes (
+    id SERIAL PRIMARY KEY,
+    municipio_id TEXT,
+    numero_licitacao TEXT,
+    data_realizacao_licitacao DATE,
+    documento_negociante TEXT,
+    nome_negociante TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_licitantes_mun ON licitantes(municipio_id);
+
+-- Itens Licitacoes
+CREATE TABLE IF NOT EXISTS itens_licitacoes (
+    id SERIAL PRIMARY KEY,
+    municipio_id TEXT,
+    numero_licitacao TEXT,
+    data_realizacao_licitacao DATE,
+    numero_sequencial_item INTEGER,
+    descricao_item TEXT,
+    valor_vencedor DOUBLE,
+    quantidade TEXT,
+    valor_unitario DOUBLE,
+    nome_vencedor TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_itens_lic ON itens_licitacoes(municipio_id);
 
 
 -- -----------------------------------------------------------------------------

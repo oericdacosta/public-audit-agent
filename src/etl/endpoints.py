@@ -76,6 +76,30 @@ class Endpoint(Enum):
         "licitacoes",
         "licitacoes",
     )
+    CONTRATOS = (
+        "/contrato",
+        APIBase.DEFAULT,
+        "contratos",
+        "contrato",
+    )
+    CONTRATADOS = (
+        "/contratados",
+        APIBase.DEFAULT,
+        "contratados",
+        "contratados",
+    )
+    ITENS_LICITACOES = (
+        "/itens_licitacoes",
+        APIBase.DEFAULT,
+        "itens_licitacoes",
+        "itens_licitacoes",
+    )
+    LICITANTES = (
+        "/licitantes",
+        APIBase.DEFAULT,
+        "licitantes",
+        "licitantes",
+    )
 
     # Dimension/Lookup Tables
     MUNICIPIOS = (

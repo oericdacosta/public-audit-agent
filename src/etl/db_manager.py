@@ -49,6 +49,7 @@ ALLOWED_TABLES: frozenset[str] = frozenset(
         "notas_fiscais",
         "notas_pagamentos",
         "itens_notas_fiscais",
+        "agentes_publicos",
     }
 )
 

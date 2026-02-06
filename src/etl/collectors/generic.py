@@ -10,6 +10,7 @@ from typing import Any
 from src.etl.client import TCEClient
 from src.etl.db_manager import DatabaseManager
 from src.etl.endpoints import Endpoint
+from src.etl.utils.masking import sanitize_record
 
 # Endpoints that don't require any parameters (global lookups)
 NO_PARAMS_ENDPOINTS = frozenset({Endpoint.MUNICIPIOS, Endpoint.FUNCOES})
@@ -23,6 +24,7 @@ PAGINATED_ENDPOINTS = frozenset(
         Endpoint.NOTAS_FISCAIS,
         Endpoint.NOTAS_PAGAMENTOS,
         Endpoint.ITENS_NOTAS_FISCAIS,
+        Endpoint.AGENTES_PUBLICOS,
     }
 )
 
@@ -125,7 +127,9 @@ class GenericCollector:
             if not records:
                 break
 
-            self.db_manager.load_data(self.endpoint.table_name, records)
+            # Apply data masking for sensitive fields
+            sanitized = [sanitize_record(r, self.endpoint.table_name) for r in records]
+            self.db_manager.load_data(self.endpoint.table_name, sanitized)
             count = len(records)
             total_records += count
 
@@ -163,6 +167,8 @@ class GenericCollector:
         if not records:
             return 0
 
-        self.db_manager.load_data(self.endpoint.table_name, records)
+        # Apply data masking for sensitive fields
+        sanitized = [sanitize_record(r, self.endpoint.table_name) for r in records]
+        self.db_manager.load_data(self.endpoint.table_name, sanitized)
 
         return len(records)

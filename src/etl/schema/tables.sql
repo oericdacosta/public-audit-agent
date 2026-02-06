@@ -271,3 +271,26 @@ CREATE TABLE IF NOT EXISTS itens_notas_fiscais (
 );
 CREATE INDEX IF NOT EXISTS idx_inf_mun_exerc ON itens_notas_fiscais(municipio_id, exercicio_orcamento);
 CREATE INDEX IF NOT EXISTS idx_inf_descricao ON itens_notas_fiscais(descricao_item);
+
+-- -----------------------------------------------------------------------------
+-- Public Servants (Agentes Públicos)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS agentes_publicos (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    cpf_servidor TEXT,  -- Masked for LGPD compliance
+    nome_servidor TEXT,
+    numero_matricula TEXT,
+    cargo TEXT,
+    tipo_cargo TEXT,
+    situacao_funcional TEXT,
+    codigo_vinculo TEXT,
+    codigo_ingresso TEXT,
+    valor_carga_horaria DOUBLE,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ap_mun_exerc ON agentes_publicos(municipio_id, exercicio_orcamento);
+CREATE INDEX IF NOT EXISTS idx_ap_nome ON agentes_publicos(nome_servidor);
+CREATE INDEX IF NOT EXISTS idx_ap_cargo ON agentes_publicos(cargo);

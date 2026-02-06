@@ -121,6 +121,14 @@ class Endpoint(Enum):
         "itens_notas_fiscais",
     )
 
+    # Personnel Endpoints (Agentes Públicos)
+    AGENTES_PUBLICOS = (
+        "/agentes_publicos",
+        APIBase.DEFAULT,
+        "agentes_publicos",
+        "agentes_publicos",
+    )
+
     # Dimension/Lookup Tables
     MUNICIPIOS = (
         "/municipios",

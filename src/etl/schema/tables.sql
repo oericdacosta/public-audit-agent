@@ -221,3 +221,53 @@ CREATE TABLE IF NOT EXISTS etl_metadata (
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (municipio_id, year, source)
 );
+-- -----------------------------------------------------------------------------
+-- Fiscal Documents (Notas Fiscais, Pagamentos, Itens)
+-- -----------------------------------------------------------------------------
+
+-- Notas Fiscais
+CREATE TABLE IF NOT EXISTS notas_fiscais (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    numero_nota_fiscal TEXT,
+    data_emissao DATE,
+    valor_liquido DOUBLE,
+    valor_bruto DOUBLE,
+    tipo_nota_fiscal TEXT,
+    cpf_cnpj_credor TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_nf_mun_exerc ON notas_fiscais(municipio_id, exercicio_orcamento);
+CREATE INDEX IF NOT EXISTS idx_nf_data ON notas_fiscais(data_emissao);
+
+-- Notas Pagamentos
+CREATE TABLE IF NOT EXISTS notas_pagamentos (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    numero_nota_pagamento TEXT,
+    data_nota_pagamento DATE,
+    valor_nota_pagamento DOUBLE,
+    nome_pagador TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_np_mun_exerc ON notas_pagamentos(municipio_id, exercicio_orcamento);
+
+-- Itens Notas Fiscais
+CREATE TABLE IF NOT EXISTS itens_notas_fiscais (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    numero_nota_fiscal TEXT,
+    descricao_item TEXT,
+    quantidade DOUBLE,
+    valor_unitario DOUBLE,
+    valor_total DOUBLE,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_inf_mun_exerc ON itens_notas_fiscais(municipio_id, exercicio_orcamento);
+CREATE INDEX IF NOT EXISTS idx_inf_descricao ON itens_notas_fiscais(descricao_item);

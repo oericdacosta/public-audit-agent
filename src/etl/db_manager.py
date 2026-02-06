@@ -40,6 +40,8 @@ ALLOWED_TABLES: frozenset[str] = frozenset(
         "programas",
         "orcamento_despesa",
         "orcamento_receita",
+        "taloes_receitas",
+        "taloes_extras",
     }
 )
 

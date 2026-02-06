@@ -101,8 +101,49 @@ CREATE TABLE IF NOT EXISTS balancete_receita_extra (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_rextra_municipio ON balancete_receita_extra(municipio_id);
 CREATE INDEX IF NOT EXISTS idx_rextra_mun_exerc ON balancete_receita_extra(municipio_id, exercicio_orcamento);
+
+
+-- -----------------------------------------------------------------------------
+-- Detailed Revenue (Talões de Receitas)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS taloes_receitas (
+    id SERIAL PRIMARY KEY,
+    municipio_id TEXT,
+    exercicio_orcamento TEXT,
+    numero_talao TEXT,
+    data_talao DATE,
+    data_referencia TEXT,
+    valor_receita DOUBLE,
+    historico_receita TEXT,
+    nome_contribuinte TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_trec_municipio ON taloes_receitas(municipio_id);
+CREATE INDEX IF NOT EXISTS idx_trec_mun_exerc ON taloes_receitas(municipio_id, exercicio_orcamento);
+
+
+-- -----------------------------------------------------------------------------
+-- Detailed Extra Revenue (Talões Extras)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS taloes_extras (
+    id SERIAL PRIMARY KEY,
+    municipio_id TEXT,
+    exercicio_orcamento TEXT,
+    numero_talao TEXT,
+    data_talao DATE,
+    data_referencia TEXT,
+    valor_receita DOUBLE,
+    historico_receita TEXT,
+    nome_contribuinte TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_textra_municipio ON taloes_extras(municipio_id);
+CREATE INDEX IF NOT EXISTS idx_textra_mun_exerc ON taloes_extras(municipio_id, exercicio_orcamento);
 
 
 -- -----------------------------------------------------------------------------

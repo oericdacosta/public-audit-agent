@@ -55,6 +55,20 @@ class Endpoint(Enum):
         "balancete_receita_extra_orcamentaria",
     )
 
+    # Detailed Revenue Endpoints (Taloes)
+    TALOES_RECEITAS = (
+        "/taloes_receitas",
+        APIBase.DEFAULT,
+        "taloes_receitas",
+        "taloes_receitas",
+    )
+    TALOES_EXTRAS = (
+        "/taloes_extras",
+        APIBase.DEFAULT,
+        "taloes_extras",
+        "taloes_extras",
+    )
+
     # Procurement
     LICITACOES = (
         "/licitacoes",

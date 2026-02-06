@@ -14,8 +14,14 @@ from src.etl.endpoints import Endpoint
 # Endpoints that don't require any parameters (global lookups)
 NO_PARAMS_ENDPOINTS = frozenset({Endpoint.MUNICIPIOS, Endpoint.FUNCOES})
 
-# Endpoints that require pagination parameters
-PAGINATED_ENDPOINTS = frozenset({Endpoint.UNIDADES_ORCAMENTARIAS})
+# Endpoints that require pagination parameters and looping
+PAGINATED_ENDPOINTS = frozenset(
+    {
+        Endpoint.UNIDADES_ORCAMENTARIAS,
+        Endpoint.TALOES_RECEITAS,
+        Endpoint.TALOES_EXTRAS,
+    }
+)
 
 
 class GenericCollector:
@@ -44,28 +50,15 @@ class GenericCollector:
         self.client = client
         self.endpoint = endpoint
 
-    def _build_params(self, municipality_id: str, year: int) -> dict[str, str]:
-        """
-        Build request parameters based on endpoint requirements.
-
-        Some endpoints (MUNICIPIOS, FUNCOES) don't require parameters.
-        Others require codigo_municipio and exercicio_orcamento.
-        Paginated endpoints also require quantidade and deslocamento.
-        """
+    def _build_base_params(self, municipality_id: str, year: int) -> dict[str, str]:
+        """Build base request parameters."""
         if self.endpoint in NO_PARAMS_ENDPOINTS:
             return {}
 
-        params = {
+        return {
             "codigo_municipio": municipality_id,
             "exercicio_orcamento": f"{year}00",
         }
-
-        # Add pagination for endpoints that require it
-        if self.endpoint in PAGINATED_ENDPOINTS:
-            params["quantidade"] = "10000"
-            params["deslocamento"] = "0"
-
-        return params
 
     def _extract_records(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         """
@@ -110,6 +103,37 @@ class GenericCollector:
 
         return []
 
+    def _run_paginated(self, municipality_id: str, year: int) -> int:
+        """Run collection with loop-based pagination."""
+        params = self._build_base_params(municipality_id, year)
+        limit = 100  # Default small page size for detailed endpoints
+        offset = 0
+        total_records = 0
+
+        while True:
+            params["quantidade"] = str(limit)
+            params["deslocamento"] = str(offset)
+
+            data = self.client.fetch(self.endpoint, params)
+            if not data:
+                break
+
+            records = self._extract_records(data)
+            if not records:
+                break
+
+            self.db_manager.load_data(self.endpoint.table_name, records)
+            count = len(records)
+            total_records += count
+
+            # Stop if we got fewer records than the limit, meaning end of data
+            if count < limit:
+                break
+
+            offset += limit
+
+        return total_records
+
     def run(self, municipality_id: str, year: int) -> int:
         """
         Execute collection for the configured endpoint.
@@ -121,22 +145,21 @@ class GenericCollector:
         Returns:
             Count of records inserted
         """
-        # 1. Build endpoint-specific parameters
-        params = self._build_params(municipality_id, year)
+        if self.endpoint in PAGINATED_ENDPOINTS:
+            return self._run_paginated(municipality_id, year)
 
-        # 2. Fetch Data
+        # Non-paginated flow (original logic)
+        params = self._build_base_params(municipality_id, year)
         data = self.client.fetch(self.endpoint, params)
 
         if not data:
             return 0
 
-        # 3. Extract records from response wrapper
         records = self._extract_records(data)
 
         if not records:
             return 0
 
-        # 4. Load to Database (using endpoint's table_name)
         self.db_manager.load_data(self.endpoint.table_name, records)
 
         return len(records)

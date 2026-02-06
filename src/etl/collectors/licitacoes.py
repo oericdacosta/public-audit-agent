@@ -1,74 +1,32 @@
 """
-Tenders (Licitações) Collector - Optimized.
+Tenders (Licitações) Collector.
 
-Collects public tender/procurement data from the TCE API with parallel fetching.
+Collects public tender/procurement data from the TCE API.
+Uses MonthlyCollector base class with sequential mode for API stability.
 """
 
 import calendar
 import json
 import logging
-from typing import Any, cast
+from typing import cast
 
 from src.etl.endpoints import Endpoint
 
-from .base import BaseCollector
+from .base import MonthlyCollector
 
 logger = logging.getLogger(__name__)
 
 
-class TendersCollector(BaseCollector):
-    """Collector for public tender (licitação) data with parallel fetching."""
+class TendersCollector(MonthlyCollector):
+    """
+    Collector for public tender (licitação) data.
 
-    def run(self, municipio_id: str, year: int) -> int:
-        """
-        Run the tender collection for a municipality and year.
+    Uses sequential month fetching for API stability (max_workers=1 equivalent).
+    """
 
-        Returns:
-            Total number of records collected.
-        """
-        logger.info(">>> Starting Licitações - Sequential Mode")
+    collector_name = "Licitações"
 
-        # Fetch all 12 months sequentially for stability
-        all_records = self._fetch_all_months_sequential(municipio_id, year)
-
-        if not all_records:
-            logger.info("Licitações: No records found.")
-            return 0
-
-        # Bulk save all records at once
-        total = self._save_all(all_records, municipio_id, year)
-        logger.info("Licitações completed: %d records.", total)
-        return total
-
-    def _fetch_all_months_sequential(
-        self, municipio_id: str, year: int
-    ) -> list[dict[str, Any]]:
-        """
-        Fetch all 12 months sequentially for API stability.
-
-        Returns:
-            Flattened list of all tender records.
-        """
-        all_records: list[dict[str, Any]] = []
-
-        for month in range(1, 13):
-            try:
-                month_records = self._fetch_month(municipio_id, year, month)
-                if month_records:
-                    all_records.extend(month_records)
-                    logger.info(
-                        "Licitações month %02d: %d records",
-                        month,
-                        len(month_records),
-                    )
-            except Exception as e:
-                logger.error("Failed to fetch Licitações month %d: %s", month, e)
-
-        return all_records
-
-    def _fetch_month(
-        self, municipio_id: str, year: int, month: int
-    ) -> list[dict[str, Any]]:
+    def _fetch_month(self, municipio_id: str, year: int, month: int) -> list[dict]:
         """Fetch tender data for a single month."""
         last_day = calendar.monthrange(int(year), month)[1]
         start_date = f"{year}-{month:02d}-01"
@@ -88,13 +46,11 @@ class TendersCollector(BaseCollector):
         if isinstance(data, list):
             return data
         elif isinstance(data, dict):
-            return cast(list[dict[str, Any]], data.get("data", []))
+            return cast(list[dict], data.get("data", []))
 
         return []
 
-    def _save_all(
-        self, all_records: list[dict[str, Any]], municipio_id: str, year: int
-    ) -> int:
+    def _save_all(self, all_records: list[dict], municipio_id: str, year: int) -> int:
         """Save all records to database in one bulk insert."""
         if not all_records:
             return 0

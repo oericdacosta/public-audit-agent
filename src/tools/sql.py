@@ -7,78 +7,59 @@ Public interface for database operations exposed to agents and MCP server.
 import logging
 import re
 import signal
-from typing import TYPE_CHECKING, Any, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Optional, Tuple, Union
 
 from src.config import get_settings
 from src.exceptions import DatabaseError
 
 if TYPE_CHECKING:
     from src.etl.db_manager import DatabaseManager
+    from src.etl.schema.introspection import SchemaIntrospector
 
 logger = logging.getLogger(__name__)
 
-# Lazy-loaded database manager
-_db = None
+# Lazy-loaded singletons
+_db: Optional["DatabaseManager"] = None
+_introspector: Optional["SchemaIntrospector"] = None
 
 # Configuration constants
 DEFAULT_LIMIT = 1000
-# Read with fallback, though config usually defaults to 30
 QUERY_TIMEOUT_SECONDS = get_settings().get("database", {}).get("query_timeout", 30)
 
 
 class QueryTimeout(Exception):
     """Raised when a query exceeds the time limit."""
 
-    pass
-
 
 def _get_db() -> "DatabaseManager":
-    """
-    Lazy-load the database manager to avoid import-time execution.
-
-    Using string forward reference for return type to avoid circular imports
-    at runtime while satisfying type checkers.
-    """
+    """Lazy-load the database manager."""
     global _db
     if _db is None:
         from src.etl.db_manager import DatabaseManager
 
         _db = DatabaseManager()
-    return cast("DatabaseManager", _db)
+    return _db
+
+
+def _get_introspector() -> "SchemaIntrospector":
+    """Lazy-load the schema introspector."""
+    global _introspector
+    if _introspector is None:
+        from src.etl.schema.introspection import SchemaIntrospector
+
+        _introspector = SchemaIntrospector(_get_db())
+    return _introspector
 
 
 def _sanitize_query(sql_query: str) -> str:
-    """
-    Remove SQL comments and normalize whitespace.
-
-    This prevents bypass attacks using comments like:
-    /* bypass */ SELECT * FROM users; DROP TABLE users
-
-    Args:
-        sql_query: Raw SQL query string.
-
-    Returns:
-        Sanitized SQL query without comments.
-    """
-    # Remove single-line comments (-- comment)
+    """Remove SQL comments and normalize whitespace."""
     sql = re.sub(r"--.*$", "", sql_query, flags=re.MULTILINE)
-    # Remove multi-line comments (/* comment */)
     sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
-    # Normalize whitespace
     return " ".join(sql.split()).strip()
 
 
 def _ensure_limit(sql_query: str, default_limit: int = DEFAULT_LIMIT) -> str:
-    """
-    Add LIMIT clause if not present to prevent OOM from large result sets.
-
-    Args:
-        sql_query: SQL query to check.
-        default_limit: Maximum rows to return if LIMIT not specified.
-
-    Returns:
-        Query with LIMIT clause.
-    """
+    """Add LIMIT clause if not present."""
     if "LIMIT" not in sql_query.upper():
         return f"{sql_query.rstrip(';')} LIMIT {default_limit}"
     return sql_query
@@ -90,28 +71,13 @@ def _timeout_handler(signum: int, frame: object) -> None:
 
 
 def validate_sql_safety(sql_query: str) -> Tuple[bool, str]:
-    """
-    Validate that a SQL query is safe to execute.
-
-    Checks for:
-    - SELECT-only queries
-    - No dangerous keywords (DROP, DELETE, etc.)
-    - No multiple statements (semicolon injection)
-
-    Args:
-        sql_query: SQL query to validate.
-
-    Returns:
-        Tuple of (is_safe, error_message).
-    """
+    """Validate that a SQL query is safe to execute."""
     sanitized = _sanitize_query(sql_query)
     normalized = sanitized.upper()
 
-    # Must start with SELECT
     if not normalized.startswith("SELECT"):
         return False, "Only SELECT queries are allowed."
 
-    # Check for dangerous keywords
     dangerous_keywords = [
         "DROP",
         "DELETE",
@@ -124,12 +90,10 @@ def validate_sql_safety(sql_query: str) -> Tuple[bool, str]:
         "EXECUTE",
     ]
     for keyword in dangerous_keywords:
-        # Use word boundary to avoid false positives (e.g., "UPDATED_AT")
         pattern = rf"\b{keyword}\b"
         if re.search(pattern, normalized):
             return False, f"{keyword} operations are not allowed."
 
-    # Check for multiple statements (semicolon not at end)
     semicolon_count = sanitized.count(";")
     if semicolon_count > 1:
         return False, "Multiple SQL statements are not allowed."
@@ -140,49 +104,27 @@ def validate_sql_safety(sql_query: str) -> Tuple[bool, str]:
 
 
 def query_sql(sql_query: str) -> Union[list[dict[str, Any]], str]:
-    """
-    Execute a read-only SQL query against the database.
-
-    Security features:
-    - Sanitizes SQL comments to prevent bypass attacks
-    - Validates query is SELECT-only with no dangerous keywords
-    - Adds default LIMIT to prevent OOM from large result sets
-    - Implements query timeout to prevent hanging queries
-
-    Args:
-        sql_query: SQL SELECT query to execute.
-
-    Returns:
-        List of result dictionaries or error message string.
-    """
-    # Sanitize query (remove comments)
+    """Execute a read-only SQL query against the database."""
     sanitized = _sanitize_query(sql_query)
-
-    # Validate query safety
     is_safe, error = validate_sql_safety(sanitized)
     if not is_safe:
         logger.warning("Rejected unsafe query: %s - %s", sql_query[:50], error)
         return f"Error: {error}"
 
-    # Add default LIMIT if not present
     query_with_limit = _ensure_limit(sanitized)
 
     try:
         db = _get_db()
-
-        # Set timeout for query execution (Unix only)
         try:
             signal.signal(signal.SIGALRM, _timeout_handler)
             signal.alarm(QUERY_TIMEOUT_SECONDS)
         except (ValueError, AttributeError):
-            # signal.SIGALRM not available on Windows
             pass
 
         try:
             results = db.execute_query(query_with_limit)
             return results
         finally:
-            # Cancel alarm
             try:
                 signal.alarm(0)
             except (ValueError, AttributeError):
@@ -201,17 +143,9 @@ def query_sql(sql_query: str) -> Union[list[dict[str, Any]], str]:
 
 
 def describe_table(table_name: str) -> str:
-    """
-    Return the schema for a specific table.
-
-    Args:
-        table_name: Name of the table to describe.
-
-    Returns:
-        DDL statement for the table or error message.
-    """
-    db = _get_db()
-    schema = db.get_start_schema(limit_tables=[table_name])
+    """Return the schema for a specific table."""
+    introspector = _get_introspector()
+    schema = introspector.get_schema(limit_tables=[table_name])
 
     if table_name in schema:
         return schema[table_name]
@@ -220,17 +154,9 @@ def describe_table(table_name: str) -> str:
 
 
 def search_definitions(query: str) -> list[dict[str, str]]:
-    """
-    Search table names and schema definitions for a keyword.
-
-    Args:
-        query: Keyword to search for in table names and DDL.
-
-    Returns:
-        List of matching tables with their definitions.
-    """
-    db = _get_db()
-    results = db.search_schema(query)
+    """Search table names and schema definitions for a keyword."""
+    introspector = _get_introspector()
+    results = introspector.search(query)
 
     if not results:
         return []
@@ -243,11 +169,6 @@ def search_definitions(query: str) -> list[dict[str, str]]:
 
 
 def list_tables() -> list[str]:
-    """
-    List all available tables in the database.
-
-    Returns:
-        List of table names.
-    """
-    db = _get_db()
-    return db.get_all_tables()
+    """List all available tables in the database."""
+    introspector = _get_introspector()
+    return introspector.get_all_tables()

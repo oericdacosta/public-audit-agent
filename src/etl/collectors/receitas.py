@@ -1,80 +1,27 @@
 """
-Revenue (Receitas) Collector - Optimized.
+Revenue (Receitas) Collector.
 
 Collects public revenue data from the TCE API with parallel fetching.
+Uses MonthlyCollector base class for shared monthly iteration logic.
 """
 
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
 
 from src.etl.endpoints import Endpoint
 
-from .base import BaseCollector
+from .base import MonthlyCollector
 
 logger = logging.getLogger(__name__)
 
 
-class RevenueCollector(BaseCollector):
+class RevenueCollector(MonthlyCollector):
     """Collector for public revenue (receita) data with parallel fetching."""
 
-    def run(self, municipio_id: str, year: int) -> int:
-        """
-        Run the revenue collection for a municipality and year.
+    collector_name = "Receitas"
 
-        Returns:
-            Total number of records collected.
-        """
-        logger.info(">>> Starting Receitas - Parallel Mode")
-
-        # Fetch all 12 months in parallel
-        all_records = self._fetch_all_months_parallel(municipio_id, year)
-
-        if not all_records:
-            logger.info("Receitas: No records found.")
-            return 0
-
-        # Bulk save all records at once
-        total = self._save_all(all_records, municipio_id, year)
-        logger.info("Receitas completed: %d records.", total)
-        return total
-
-    def _fetch_all_months_parallel(
-        self, municipio_id: str, year: int
-    ) -> list[dict[str, Any]]:
-        """
-        Fetch all 12 months in parallel.
-
-        Returns:
-            Flattened list of all revenue records.
-        """
-        all_records: list[dict[str, Any]] = []
-
-        with ThreadPoolExecutor(max_workers=12) as executor:
-            futures = {
-                executor.submit(self._fetch_month, municipio_id, year, month): month
-                for month in range(1, 13)
-            }
-
-            for future in as_completed(futures):
-                month = futures[future]
-                try:
-                    month_records = future.result()
-                    if month_records:
-                        all_records.extend(month_records)
-                        logger.info(
-                            "Receitas month %02d: %d records", month, len(month_records)
-                        )
-                except Exception as e:
-                    logger.error("Failed to fetch Receitas month %d: %s", month, e)
-
-        return all_records
-
-    def _fetch_month(
-        self, municipio_id: str, year: int, month: int
-    ) -> list[dict[str, Any]]:
-        """Fetch revenue data for a single month."""
+    def _fetch_month(self, municipio_id: str, year: int, month: int) -> list[dict]:
+        """Fetch revenue data for a single month (no pagination)."""
         month_ref = f"{year}{month:02d}"
         params = {
             "codigo_municipio": municipio_id,
@@ -87,7 +34,12 @@ class RevenueCollector(BaseCollector):
         if not data:
             return []
 
+        return self._extract_records(data)
+
+    def _extract_records(self, data: dict) -> list[dict]:
+        """Extract records from API response."""
         content = None
+
         if "rsp" in data and "_content" in data["rsp"]:
             content = data["rsp"]["_content"]
         elif "data" in data:
@@ -103,12 +55,7 @@ class RevenueCollector(BaseCollector):
 
         return []
 
-    def _save_all(
-        self,
-        all_records: list[dict[str, Any]],
-        municipio_id: str,
-        year: int,
-    ) -> int:
+    def _save_all(self, all_records: list[dict], municipio_id: str, year: int) -> int:
         """Save all records to database in one bulk insert."""
         if not all_records:
             return 0

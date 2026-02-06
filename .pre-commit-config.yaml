@@ -43,6 +43,7 @@ repos:
     hooks:
       - id: check-model-has-description
         args: ["--manifest", "dbt/target/manifest.json"]
+        exclude: ^src/etl/schema/
       - id: check-model-columns-have-desc
         args: ["--manifest", "dbt/target/manifest.json"]
       - id: check-source-table-has-description

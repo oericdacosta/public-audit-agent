@@ -20,6 +20,9 @@ PAGINATED_ENDPOINTS = frozenset(
         Endpoint.UNIDADES_ORCAMENTARIAS,
         Endpoint.TALOES_RECEITAS,
         Endpoint.TALOES_EXTRAS,
+        Endpoint.NOTAS_FISCAIS,
+        Endpoint.NOTAS_PAGAMENTOS,
+        Endpoint.ITENS_NOTAS_FISCAIS,
     }
 )
 

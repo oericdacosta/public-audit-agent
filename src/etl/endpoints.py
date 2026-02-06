@@ -101,6 +101,26 @@ class Endpoint(Enum):
         "licitantes",
     )
 
+    # Fiscal Endpoints (Notas e Pagamentos)
+    NOTAS_FISCAIS = (
+        "/notas_fiscais",
+        APIBase.DEFAULT,
+        "notas_fiscais",
+        "notas_fiscais",
+    )
+    NOTAS_PAGAMENTOS = (
+        "/notas_pagamentos",
+        APIBase.DEFAULT,
+        "notas_pagamentos",
+        "notas_pagamentos",
+    )
+    ITENS_NOTAS_FISCAIS = (
+        "/itens_notas_fiscais",
+        APIBase.DEFAULT,
+        "itens_notas_fiscais",
+        "itens_notas_fiscais",
+    )
+
     # Dimension/Lookup Tables
     MUNICIPIOS = (
         "/municipios",

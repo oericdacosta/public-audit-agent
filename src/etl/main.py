@@ -60,7 +60,6 @@ SPECIALIZED_ENDPOINTS: frozenset[Endpoint] = frozenset(
         Endpoint.CONTRATADOS,
         Endpoint.ITENS_LICITACOES,
         Endpoint.LICITANTES,
-        Endpoint.NOTAS_EMPENHO,
     }
 )
 
@@ -127,9 +126,6 @@ def _create_specialized_collectors(
         ),
         Endpoint.LICITANTES: TransacoesCollector(
             db_manager, client, Endpoint.LICITANTES
-        ),
-        Endpoint.NOTAS_EMPENHO: TransacoesCollector(
-            db_manager, client, Endpoint.NOTAS_EMPENHO
         ),
         Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
         Endpoint.RECEITAS: RevenueCollector(db_manager, client),
@@ -212,6 +208,9 @@ async def run_etl(
 
         tasks = []
         for _priority, year, endpoint in ordered_tasks:
+            if endpoint == Endpoint.NOTAS_EMPENHOS:
+                continue
+
             if endpoint in SPECIALIZED_ENDPOINTS:
                 collector = specialized_collectors[endpoint]
             else:

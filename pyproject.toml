@@ -24,6 +24,7 @@ dependencies = [
     "duckdb>=1.1.0",
     "dbt-duckdb>=1.8.0",
     "pyarrow>=23.0.0",
+    "aiohttp>=3.13.3",
 ]
 
 [dependency-groups]

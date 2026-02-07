@@ -2,9 +2,11 @@
 Database Manager.
 
 Handles DuckDB database connections, schema initialization, and query execution.
+Uses a single persistent connection with a lock for thread safety.
 """
 
 import logging
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
@@ -61,11 +63,8 @@ class DatabaseManager:
     """
     Manages DuckDB database connections and core operations.
 
-    Focused on: connection management, schema initialization,
-    query execution, and data loading.
-
-    For schema introspection, use SchemaIntrospector.
-    For ETL metadata tracking, use ETLMetadataManager.
+    Uses a single persistent connection with a lock to avoid
+    DuckDB file handle conflicts in multi-threaded environments.
     """
 
     def __init__(self) -> None:
@@ -84,6 +83,11 @@ class DatabaseManager:
                 details="'database.path' not found in config.yaml",
             ) from e
         self._setup_directories()
+        # Single persistent connection + lock for thread safety
+        self._conn: DuckDBPyConnection = duckdb.connect(self.db_path)
+        self._conn_lock = threading.Lock()
+        # Cache for table column info
+        self._columns_cache: dict[str, list[str]] = {}
 
     def _validate_table_name(self, table_name: str) -> None:
         """Validate table name against allowlist to prevent SQL injection."""
@@ -105,16 +109,13 @@ class DatabaseManager:
     @contextmanager
     def get_connection(self) -> Generator[DuckDBPyConnection, None, None]:
         """
-        Get a database connection using context manager pattern.
+        Get exclusive access to the shared database connection.
 
-        Yields:
-            DuckDB connection that auto-closes on exit.
+        Uses a lock to serialize all database operations for thread safety.
+        DuckDB does not support concurrent writes from multiple connections.
         """
-        conn = duckdb.connect(self.db_path)
-        try:
-            yield conn
-        finally:
-            conn.close()
+        with self._conn_lock:
+            yield self._conn
 
     def get_raw_connection(self) -> DuckDBPyConnection:
         """
@@ -124,6 +125,11 @@ class DatabaseManager:
             DuckDB connection (must be closed by caller).
         """
         return duckdb.connect(self.db_path)
+
+    def close(self) -> None:
+        """Close the persistent connection."""
+        with self._conn_lock:
+            self._conn.close()
 
     def initialize_schema(self) -> None:
         """
@@ -165,6 +171,21 @@ class DatabaseManager:
         except (duckdb.Error, Exception) as e:
             raise DatabaseError("Query execution failed", details=str(e)) from e
 
+    def _get_table_columns(
+        self, table_name: str, conn: DuckDBPyConnection
+    ) -> list[str]:
+        """Get table columns, using cache when available."""
+        if table_name in self._columns_cache:
+            return self._columns_cache[table_name]
+
+        columns = [
+            col[1]
+            for col in conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+        ]
+
+        self._columns_cache[table_name] = columns
+        return columns
+
     def load_data(
         self, table_name: str, data: dict[str, Any] | list[dict[str, Any]]
     ) -> None:
@@ -199,12 +220,7 @@ class DatabaseManager:
                     "AS SELECT * FROM df LIMIT 0"
                 )
 
-                columns = [
-                    col[1]
-                    for col in conn.execute(
-                        f"PRAGMA table_info('{table_name}')"
-                    ).fetchall()
-                ]
+                columns = self._get_table_columns(table_name, conn)
 
                 # Filter DataFrame to only columns that exist in the table
                 valid_cols = [c for c in df.columns if c in columns]

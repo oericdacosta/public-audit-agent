@@ -77,17 +77,13 @@ class ETLMetadataManager:
             status: New status ('STARTED', 'COMPLETED', 'FAILED').
             count: Number of records processed.
         """
-        # Import here to avoid circular dependency
-        from src.etl.collectors.base import _DB_WRITE_LOCK
-
-        with _DB_WRITE_LOCK:
-            with self._db_manager.get_connection() as conn:
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO etl_metadata
-                    (municipio_id, year, source, status, record_count, last_updated)
-                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    """,
-                    (municipality_id, year, source, status, count),
-                )
-                conn.commit()
+        with self._db_manager.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO etl_metadata
+                (municipio_id, year, source, status, record_count, last_updated)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (municipality_id, year, source, status, count),
+            )
+            conn.commit()

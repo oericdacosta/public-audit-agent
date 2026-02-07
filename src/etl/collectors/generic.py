@@ -36,7 +36,6 @@ PAGINATED_ENDPOINTS = frozenset(
         Endpoint.AGENTES_PUBLICOS,
         Endpoint.LIQUIDACOES,
         Endpoint.LICITANTES,
-        Endpoint.NOTAS_EMPENHOS,
         # Dimension/lookup tables (accepts pagination params)
         Endpoint.UNIDADES_ORCAMENTARIAS,
     }
@@ -256,22 +255,34 @@ class GenericCollector:
         """Generate a unique identifier from record fields."""
         # Try common ID fields (transactional)
         for field in [
+            # Transactional/Detailed IDs (High specificity)
             "numero_talao_receita",
             "nu_talao_receita_tx",
             "numero_nota_fiscal",
             "numero_liquidacao",
-            "codigo_agente",
+            "numero_empenho",
             "numero_pagamento",
-            # Dimension/lookup table fields
-            "codigo_municipio",
+            "numero_nota_pagamento",
+            "codigo_agente",
+            "numero_matricula",
+            "numero_contrato",
+            "numero_licitacao",
+            "numero_processo",
+            "id_contrato",
+            "id_licitacao",
+            # Dimension/Lookup Table IDs
             "codigo_funcao",
             "codigo_orgao",
             "codigo_unidade_orcamentaria",
+            "codigo_unidade",
             "codigo_ordenador",
             "numero_conta",
             "codigo_programa",
             "codigo_projeto_atividade",
             "codigo_receita",
+            "codigo_rubrica",
+            # Last resort field (highly shared, often causes collisions)
+            "codigo_municipio",
         ]:
             if field in record:
                 return str(record[field])

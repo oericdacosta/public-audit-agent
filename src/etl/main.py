@@ -208,9 +208,6 @@ async def run_etl(
 
         tasks = []
         for _priority, year, endpoint in ordered_tasks:
-            if endpoint == Endpoint.NOTAS_EMPENHOS:
-                continue
-
             if endpoint in SPECIALIZED_ENDPOINTS:
                 collector = specialized_collectors[endpoint]
             else:

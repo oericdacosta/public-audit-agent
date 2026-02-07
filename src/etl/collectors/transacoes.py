@@ -38,7 +38,6 @@ class TransacoesCollector(MonthlyCollector):
         Endpoint.LICITANTES: "data_realizacao_licitacao",
         Endpoint.CONTRATOS: "data_contrato",
         Endpoint.CONTRATADOS: "data_contrato",
-        Endpoint.NOTAS_EMPENHOS: "data_referencia_empenho",
     }
 
     # Endpoints that DON'T support quantidade/deslocamento pagination

@@ -3,8 +3,10 @@ Revenue (Receitas) Collector.
 
 Collects public revenue data from the TCE API with parallel fetching.
 Uses MonthlyCollector base class for shared monthly iteration logic.
+Note: This endpoint does NOT support quantidade/deslocamento pagination.
 """
 
+import asyncio
 import json
 import logging
 
@@ -20,7 +22,9 @@ class RevenueCollector(MonthlyCollector):
 
     collector_name = "Receitas"
 
-    def _fetch_month(self, municipio_id: str, year: int, month: int) -> list[dict]:
+    async def _fetch_month(
+        self, municipio_id: str, year: int, month: int
+    ) -> list[dict]:
         """Fetch revenue data for a single month (no pagination)."""
         month_ref = f"{year}{month:02d}"
         params = {
@@ -30,7 +34,7 @@ class RevenueCollector(MonthlyCollector):
         }
         url = self.client.build_url(Endpoint.RECEITAS)
 
-        data = self.client.fetch_json(url, params)
+        data = await self.client.fetch_json(url, params)
         if not data:
             return []
 
@@ -40,8 +44,8 @@ class RevenueCollector(MonthlyCollector):
         """Extract records from API response."""
         content = None
 
-        if "rsp" in data and "_content" in data["rsp"]:
-            content = data["rsp"]["_content"]
+        if "rsp" in data and isinstance(data["rsp"], dict):
+            content = data["rsp"].get("_content")
         elif "data" in data:
             content = data["data"]
         elif "balancete_receita_orcamentaria" in data:
@@ -55,11 +59,41 @@ class RevenueCollector(MonthlyCollector):
 
         return []
 
-    def _save_all(self, all_records: list[dict], municipio_id: str, year: int) -> int:
+    async def _save_all(
+        self, all_records: list[dict], municipio_id: str, year: int
+    ) -> int:
         """Save all records to database in one bulk insert."""
         if not all_records:
             return 0
 
+        # Run CPU-bound processing in thread
+        records = await asyncio.to_thread(
+            self._process_records_sync, all_records, municipio_id, year
+        )
+
+        columns = [
+            "id",
+            "municipio_id",
+            "exercicio_orcamento",
+            "mes_referencia",
+            "codigo_orgao",
+            "codigo_unidade_orcamentaria",
+            "codigo_receita",
+            "descricao_receita",
+            "valor_orcado",
+            "valor_arrecadado",
+            "raw_data",
+        ]
+
+        update_columns = ["valor_orcado", "valor_arrecadado", "raw_data"]
+
+        # Run Blocking DB write (bulk_upsert handles to_thread internally)
+        return await self.bulk_upsert("receitas", columns, records, update_columns)
+
+    def _process_records_sync(
+        self, all_records: list[dict], municipio_id: str, year: int
+    ) -> list[tuple]:
+        """Sync helper to process records."""
         records = []
         for i, item in enumerate(all_records):
             month_ref = item.get("data_referencia", f"{year}00")
@@ -82,21 +116,4 @@ class RevenueCollector(MonthlyCollector):
                     json.dumps(item),
                 )
             )
-
-        columns = [
-            "id",
-            "municipio_id",
-            "exercicio_orcamento",
-            "mes_referencia",
-            "codigo_orgao",
-            "codigo_unidade_orcamentaria",
-            "codigo_receita",
-            "descricao_receita",
-            "valor_orcado",
-            "valor_arrecadado",
-            "raw_data",
-        ]
-
-        update_columns = ["valor_orcado", "valor_arrecadado", "raw_data"]
-
-        return self.bulk_upsert("receitas", columns, records, update_columns)
+        return records

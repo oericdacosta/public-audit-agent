@@ -377,3 +377,112 @@ CREATE TABLE IF NOT EXISTS negociantes (
 );
 CREATE INDEX IF NOT EXISTS idx_neg_nome ON negociantes(nome_negociante);
 CREATE INDEX IF NOT EXISTS idx_neg_doc ON negociantes(numero_documento_negociante);
+
+-- -----------------------------------------------------------------------------
+-- Dimension / Lookup Tables
+-- -----------------------------------------------------------------------------
+
+-- Municípios
+CREATE TABLE IF NOT EXISTS municipios (
+    id TEXT PRIMARY KEY,
+    codigo_municipio TEXT,
+    nome_municipio TEXT,
+    uf TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Funções
+CREATE TABLE IF NOT EXISTS funcoes (
+    id TEXT PRIMARY KEY,
+    codigo_funcao TEXT,
+    descricao_funcao TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Órgãos
+CREATE TABLE IF NOT EXISTS orgaos (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    codigo_orgao TEXT,
+    descricao_orgao TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_orgaos_mun ON orgaos(municipio_id);
+
+-- Unidades Orçamentárias
+CREATE TABLE IF NOT EXISTS unidades_orcamentarias (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    codigo_unidade_orcamentaria TEXT,
+    descricao_unidade_orcamentaria TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_uo_mun ON unidades_orcamentarias(municipio_id);
+
+-- Ordenadores
+CREATE TABLE IF NOT EXISTS ordenadores (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    codigo_ordenador TEXT,
+    nome_ordenador TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ord_mun ON ordenadores(municipio_id);
+
+-- Contas Bancárias
+CREATE TABLE IF NOT EXISTS contas_bancarias (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    numero_banco TEXT,
+    numero_agencia TEXT,
+    numero_conta TEXT,
+    descricao_conta TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_cb_mun ON contas_bancarias(municipio_id);
+
+-- Programas
+CREATE TABLE IF NOT EXISTS programas (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    codigo_programa TEXT,
+    descricao_programa TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_prog_mun ON programas(municipio_id);
+
+-- Orçamento Despesa (Projetos/Atividades)
+CREATE TABLE IF NOT EXISTS orcamento_despesa (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    codigo_projeto_atividade TEXT,
+    descricao_projeto_atividade TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_od_mun ON orcamento_despesa(municipio_id);
+
+-- Orçamento Receita
+CREATE TABLE IF NOT EXISTS orcamento_receita (
+    id TEXT PRIMARY KEY,
+    municipio_id TEXT,
+    codigo_receita TEXT,
+    descricao_receita TEXT,
+    exercicio_orcamento TEXT,
+    raw_data JSON,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_or_mun ON orcamento_receita(municipio_id);

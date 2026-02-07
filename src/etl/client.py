@@ -5,11 +5,14 @@ HTTP client for fetching data from the TCE (Tribunal de Contas) APIs.
 Uses session pooling for connection reuse, rate limiting and circuit breaker.
 """
 
+import asyncio
 import logging
 import threading
 import time
-from typing import Any, Optional, cast
+from collections import deque
+from typing import Any, Awaitable, Callable, Optional, cast
 
+import aiohttp
 import pybreaker
 import requests
 from requests.adapters import HTTPAdapter
@@ -20,13 +23,14 @@ from src.etl.endpoints import APIBase, Endpoint
 
 logger = logging.getLogger(__name__)
 
-# Rate limit: 10 requests per second (prevents IP blocking)
-RATE_LIMIT_CALLS = 10
+# Rate limit: 200 requests per second (API allows up to 500)
+# Rate limit: 100 requests per second (Safer limit)
+RATE_LIMIT_CALLS = 100
 RATE_LIMIT_PERIOD = 1.0  # seconds
 
-# Circuit breaker: open after 5 failures, reset after 60 seconds
-CIRCUIT_FAIL_MAX = 5
-CIRCUIT_RESET_TIMEOUT = 60
+# Circuit breaker: open after 10 failures, reset after 15 seconds
+CIRCUIT_FAIL_MAX = 10
+CIRCUIT_RESET_TIMEOUT = 15
 
 
 class TCEClient:
@@ -57,7 +61,7 @@ class TCEClient:
 
     # Rate limiter state (thread-safe)
     _rate_lock = threading.Lock()
-    _request_times: list[float] = []
+    _request_times: deque[float] = deque()
 
     def __init__(self) -> None:
         """Initialize the TCE client with configured URLs and session."""
@@ -88,10 +92,10 @@ class TCEClient:
             allowed_methods=["GET"],
         )
 
-        # Configure connection pooling (conservative settings)
+        # Configure connection pooling (sized for high throughput)
         adapter = HTTPAdapter(
-            pool_connections=5,  # Reduced from 20
-            pool_maxsize=10,  # Reduced from 50
+            pool_connections=50,
+            pool_maxsize=200,
             max_retries=retry_strategy,
         )
 
@@ -104,23 +108,32 @@ class TCEClient:
     def _wait_for_rate_limit(self) -> None:
         """
         Enforce rate limiting: max RATE_LIMIT_CALLS per RATE_LIMIT_PERIOD.
-        Thread-safe implementation.
+        Thread-safe implementation that does NOT sleep while holding the lock.
         """
-        with self._rate_lock:
-            now = time.time()
-            # Remove requests older than the rate limit period
-            self._request_times = [
-                t for t in self._request_times if now - t < RATE_LIMIT_PERIOD
-            ]
+        while True:
+            sleep_time = 0.0
+            with self._rate_lock:
+                now = time.time()
+                # Remove requests older than the rate limit period
+                while (
+                    self._request_times
+                    and now - self._request_times[0] >= RATE_LIMIT_PERIOD
+                ):
+                    self._request_times.popleft()
 
-            if len(self._request_times) >= RATE_LIMIT_CALLS:
-                # Wait until oldest request expires
-                sleep_time = RATE_LIMIT_PERIOD - (now - self._request_times[0])
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
-                    self._request_times = self._request_times[1:]
+                if len(self._request_times) < RATE_LIMIT_CALLS:
+                    # Slot available: register and proceed
+                    self._request_times.append(now)
+                    return
+                else:
+                    # Calculate sleep time and release lock before sleeping
+                    sleep_time = (
+                        RATE_LIMIT_PERIOD - (now - self._request_times[0]) + 0.01
+                    )
 
-            self._request_times.append(time.time())
+            # Sleep OUTSIDE the lock so other threads aren't blocked
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
     def build_url(self, endpoint: Endpoint) -> str:
         """
@@ -218,3 +231,154 @@ class TCEClient:
             cls._session.close()
             cls._session = None
             logger.info("TCEClient session closed")
+
+
+class AsyncCircuitBreaker:
+    """Simple Async Circuit Breaker."""
+
+    def __init__(self, fail_max: int = 5, reset_timeout: int = 60) -> None:
+        self.fail_max = fail_max
+        self.reset_timeout = reset_timeout
+        self.failure_count = 0
+        self.state = "closed"  # closed, open, half-open
+        self.last_failure_time = 0
+
+    async def call(
+        self, func: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
+    ) -> Any:
+        """Execute async function with circuit breaker logic."""
+        if self.state == "open":
+            if time.time() - self.last_failure_time > self.reset_timeout:
+                self.state = "half-open"
+            else:
+                raise pybreaker.CircuitBreakerError("Circuit is open")
+
+        try:
+            result = await func(*args, **kwargs)
+            if self.state == "half-open":
+                self.state = "closed"
+                self.failure_count = 0
+            return result
+        except Exception:
+            self.failure_count += 1
+            self.last_failure_time = int(time.time())
+            if self.failure_count >= self.fail_max:
+                self.state = "open"
+            raise
+
+
+class AsyncTCEClient:
+    """
+    Async HTTP client for TCE public data APIs using aiohttp.
+
+    Optimized for high concurrency with:
+    - asyncio.Semaphore for rate limiting
+    - aiohttp.TCPConnector for connection pooling
+    - Single session for entire lifecycle
+    """
+
+    def __init__(self, rate_limit: int = RATE_LIMIT_CALLS) -> None:
+        """
+        Initialize Async Client.
+        Args:
+            rate_limit: Max concurrent requests allowed.
+                        Note: This acts as a semaphore, not strict rate/sec,
+                        but effectively limits load.
+        """
+        settings = get_settings()
+        tce_config = settings.get("tce", {})
+        self.BASE_URL = tce_config.get("base_url", "")
+        self.SIM_BASE_URL = tce_config.get("sim_base_url", "")
+
+        # Concurrency control
+        self.semaphore = asyncio.Semaphore(rate_limit)
+
+        # Session state
+        self._session: Optional[aiohttp.ClientSession] = None
+
+        # Circuit breaker (Simple async implementation)
+        self._circuit_breaker = AsyncCircuitBreaker(
+            fail_max=CIRCUIT_FAIL_MAX,
+            reset_timeout=CIRCUIT_RESET_TIMEOUT,
+        )
+
+    async def get_session(self) -> aiohttp.ClientSession:
+        """Get or create the shared aiohttp session."""
+        if self._session is None or self._session.closed:
+            # No limit on pool size (governed by semaphore)
+            # ttl_dns_cache=300 to reduce DNS lookups
+            connector = aiohttp.TCPConnector(limit=0, ttl_dns_cache=300)
+            timeout = aiohttp.ClientTimeout(total=60, sock_connect=10)
+
+            self._session = aiohttp.ClientSession(
+                connector=connector, headers=TCEClient.DEFAULT_HEADERS, timeout=timeout
+            )
+            logger.info("AsyncTCEClient session initialized")
+        return self._session
+
+    async def close(self) -> None:
+        """Close the async session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            logger.info("AsyncTCEClient session closed")
+
+    def build_url(self, endpoint: Endpoint) -> str:
+        """Build full URL for endpoint."""
+        if endpoint.base == APIBase.SIM:
+            base = self.SIM_BASE_URL
+        else:
+            base = self.BASE_URL
+        return f"{base.rstrip('/')}{endpoint.path}"
+
+    async def _make_request(
+        self, session: aiohttp.ClientSession, url: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute request with semaphore and error handling."""
+        async with self.semaphore:
+            async with session.get(url, params=params) as response:
+                if response.status == 404:
+                    return {}
+
+                response.raise_for_status()
+                return cast(dict[str, Any], await response.json())
+
+    async def fetch_json(
+        self, url: str, params: dict[str, Any], retries: int = 3
+    ) -> Optional[dict[str, Any]]:
+        """
+        Fetch JSON data asynchronously with retries and circuit breaker.
+        """
+        session = await self.get_session()
+
+        for attempt in range(retries + 1):
+            try:
+                return cast(
+                    dict[str, Any] | None,
+                    await self._circuit_breaker.call(
+                        self._make_request, session, url, params
+                    ),
+                )
+
+            except pybreaker.CircuitBreakerError:
+                logger.warning("Circuit breaker open. Skipping %s", url)
+                return None
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt == retries:
+                    logger.error(
+                        "Failed to fetch %s after %d retries: %s", url, retries, e
+                    )
+                    return None
+
+                # Exponential backoff: 1s, 2s, 4s...
+                delay = 1 * (2**attempt)
+                await asyncio.sleep(delay)
+
+        return None
+
+    async def fetch(
+        self, endpoint: Endpoint, params: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
+        """Syntactic sugar for fetching a specific endpoint."""
+        url = self.build_url(endpoint)
+        return await self.fetch_json(url, params)

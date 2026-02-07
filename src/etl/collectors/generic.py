@@ -5,10 +5,11 @@ Handles extraction for standard endpoints that don't require custom processing l
 Uses Endpoint properties for deterministic data extraction.
 """
 
+import asyncio
 import logging
 from typing import Any
 
-from src.etl.client import TCEClient
+from src.etl.client import AsyncTCEClient
 from src.etl.db_manager import DatabaseManager
 from src.etl.endpoints import Endpoint
 from src.etl.utils.masking import sanitize_record
@@ -16,14 +17,17 @@ from src.etl.utils.masking import sanitize_record
 logger = logging.getLogger(__name__)
 
 # Endpoints that don't require any parameters (global lookups)
-NO_PARAMS_ENDPOINTS = frozenset(
-    {Endpoint.MUNICIPIOS, Endpoint.FUNCOES, Endpoint.NEGOCIANTES}
+NO_PARAMS_ENDPOINTS = frozenset({Endpoint.MUNICIPIOS, Endpoint.FUNCOES})
+
+# Endpoints that cannot be bulk-extracted (require specific search params)
+SKIP_ENDPOINTS = frozenset(
+    {Endpoint.NEGOCIANTES}  # Requires 'nome_negociante' search parameter
 )
 
 # Endpoints that require pagination parameters and looping
 PAGINATED_ENDPOINTS = frozenset(
     {
-        Endpoint.UNIDADES_ORCAMENTARIAS,
+        # Detailed transactional data
         Endpoint.TALOES_RECEITAS,
         Endpoint.TALOES_EXTRAS,
         Endpoint.NOTAS_FISCAIS,
@@ -31,6 +35,8 @@ PAGINATED_ENDPOINTS = frozenset(
         Endpoint.ITENS_NOTAS_FISCAIS,
         Endpoint.AGENTES_PUBLICOS,
         Endpoint.LIQUIDACOES,
+        # Dimension/lookup tables (accepts pagination params)
+        Endpoint.UNIDADES_ORCAMENTARIAS,
     }
 )
 
@@ -46,7 +52,7 @@ class GenericCollector:
     def __init__(
         self,
         db_manager: DatabaseManager,
-        client: TCEClient,
+        client: AsyncTCEClient,
         endpoint: Endpoint,
     ) -> None:
         """
@@ -119,69 +125,128 @@ class GenericCollector:
 
         return []
 
-    def _run_paginated(self, municipality_id: str, year: int) -> int:
-        """Run collection with loop-based pagination."""
+    async def _fetch_first_page(
+        self, municipality_id: str, year: int, page_size: int = 100
+    ) -> tuple[list[dict], int]:
+        """Fetch first page and extract total count from response.
+
+        Returns:
+            Tuple of (records, total). total=0 means API didn't provide count.
+        """
+        params = self._build_base_params(municipality_id, year)
+        params["quantidade"] = str(page_size)
+        params["deslocamento"] = "0"
+
+        data = await self.client.fetch(self.endpoint, params)
+        if not data:
+            return [], 0
+
+        total = 0
+        # Format A: {"rsp": {"_total": N, "_content": [...]}}
+        if "rsp" in data and isinstance(data["rsp"], dict):
+            total = int(data["rsp"].get("_total", 0))
+        # Format B: {"data": {"total": N, "data": [...]}}
+        elif "data" in data and isinstance(data["data"], dict):
+            total = int(data["data"].get("total", 0))
+
+        records = self._extract_records(data)
+        return records, total
+
+    async def _fetch_page(
+        self,
+        municipality_id: str,
+        year: int,
+        offset: int,
+        page_size: int = 100,
+    ) -> list[dict]:
+        """Fetch a single page of paginated data."""
+        params = self._build_base_params(municipality_id, year)
+        params["quantidade"] = str(page_size)
+        params["deslocamento"] = str(offset)
+
+        data = await self.client.fetch(self.endpoint, params)
+        if not data:
+            return []
+        return self._extract_records(data)
+
+    def _augment_records(
+        self, records: list[dict], municipality_id: str, year: int
+    ) -> list[dict]:
+        """Augment raw records with standard fields, IDs, and masking."""
         import json
 
-        params = self._build_base_params(municipality_id, year)
-        limit = 100  # Default small page size for detailed endpoints
+        augmented = []
+        for item in records:
+            item_copy = item.copy()
+            id_field = self._get_id_field(item)
+            item_copy["id"] = f"{municipality_id}_{id_field}_{year}"
+            item_copy["municipio_id"] = municipality_id
+            item_copy["exercicio_orcamento"] = str(year)
+            item_copy["raw_data"] = json.dumps(item)
+            augmented.append(sanitize_record(item_copy, self.endpoint.table_name))
+        return augmented
+
+    async def _run_paginated(self, municipality_id: str, year: int) -> int:
+        """
+        Run collection with robust pagination and bulk save.
+
+        Uses a sequential loop to guarantee data completeness, as async
+        """
+        page_size = 500
+        all_records = []
         offset = 0
-        total_records = 0
-        page = 1
 
+        # Loop until no more records are returned
         while True:
-            params["quantidade"] = str(limit)
-            params["deslocamento"] = str(offset)
-
-            data = self.client.fetch(self.endpoint, params)
-            if not data:
-                break
-
-            records = self._extract_records(data)
-            if not records:
-                break
-
-            # Augment records with standard fields
-            augmented = []
-            for item in records:
-                item_copy = item.copy()
-                # Generate unique ID
-                id_field = self._get_id_field(item)
-                item_copy["id"] = f"{municipality_id}_{id_field}_{year}"
-                item_copy["municipio_id"] = municipality_id
-                item_copy["exercicio_orcamento"] = str(year)
-                item_copy["raw_data"] = json.dumps(item)
-                augmented.append(item_copy)
-
-            # Apply data masking for sensitive fields
-            sanitized = [
-                sanitize_record(r, self.endpoint.table_name) for r in augmented
-            ]
-            self.db_manager.load_data(self.endpoint.table_name, sanitized)
-            count = len(records)
-            total_records += count
-
-            # Log progress
-            logger.info(
-                "%s page %d: %d records (total: %d)",
-                self.endpoint.name,
-                page,
-                count,
-                total_records,
+            # Fetch page
+            page_records = await self._fetch_page(
+                municipality_id, year, offset, page_size
             )
 
-            # Stop if we got fewer records than the limit, meaning end of data
-            if count < limit:
+            if not page_records:
                 break
 
-            offset += limit
-            page += 1
+            count = len(page_records)
+            all_records.extend(page_records)
 
-        return total_records
+            logger.debug(
+                "%s: fetched page size=%d offset=%d total_so_far=%d",
+                self.endpoint.name,
+                count,
+                offset,
+                len(all_records),
+            )
+
+            # Accessing next page
+            offset += page_size
+
+            # If no records returned, loop breaks at start of next iteration
+            # or we can check here to avoid one extra request
+            if not page_records:
+                break
+
+        logger.info(
+            "%s: fetched %d records total. Saving...",
+            self.endpoint.name,
+            len(all_records),
+        )
+
+        if not all_records:
+            return 0
+
+        # Save all at once (Bulk Insert) to minimize DB lock contention
+        augmented = await asyncio.to_thread(
+            self._augment_records, all_records, municipality_id, year
+        )
+        await asyncio.to_thread(
+            self.db_manager.load_data, self.endpoint.table_name, augmented
+        )
+
+        return len(all_records)
 
     def _get_id_field(self, record: dict) -> str:
         """Generate a unique identifier from record fields."""
-        # Try common ID fields
+        # Try common ID fields (transactional)
         for field in [
             "numero_talao_receita",
             "nu_talao_receita_tx",
@@ -189,6 +254,16 @@ class GenericCollector:
             "numero_liquidacao",
             "codigo_agente",
             "numero_pagamento",
+            # Dimension/lookup table fields
+            "codigo_municipio",
+            "codigo_funcao",
+            "codigo_orgao",
+            "codigo_unidade_orcamentaria",
+            "codigo_ordenador",
+            "numero_conta",
+            "codigo_programa",
+            "codigo_projeto_atividade",
+            "codigo_receita",
         ]:
             if field in record:
                 return str(record[field])
@@ -199,7 +274,7 @@ class GenericCollector:
             str(sorted(record.items())).encode(), usedforsecurity=False
         ).hexdigest()[:12]
 
-    def run(self, municipality_id: str, year: int) -> int:
+    async def run(self, municipality_id: str, year: int) -> int:
         """
         Execute collection for the configured endpoint.
 
@@ -210,12 +285,16 @@ class GenericCollector:
         Returns:
             Count of records inserted
         """
-        if self.endpoint in PAGINATED_ENDPOINTS:
-            return self._run_paginated(municipality_id, year)
+        if self.endpoint in SKIP_ENDPOINTS:
+            logger.debug("Skipping %s (requires search params)", self.endpoint.name)
+            return 0
 
-        # Non-paginated flow (original logic)
+        if self.endpoint in PAGINATED_ENDPOINTS:
+            return await self._run_paginated(municipality_id, year)
+
+        # Non-paginated flow
         params = self._build_base_params(municipality_id, year)
-        data = self.client.fetch(self.endpoint, params)
+        data = await self.client.fetch(self.endpoint, params)
 
         if not data:
             return 0
@@ -225,8 +304,11 @@ class GenericCollector:
         if not records:
             return 0
 
-        # Apply data masking for sensitive fields
-        sanitized = [sanitize_record(r, self.endpoint.table_name) for r in records]
-        self.db_manager.load_data(self.endpoint.table_name, sanitized)
+        augmented = await asyncio.to_thread(
+            self._augment_records, records, municipality_id, year
+        )
+        await asyncio.to_thread(
+            self.db_manager.load_data, self.endpoint.table_name, augmented
+        )
 
         return len(records)

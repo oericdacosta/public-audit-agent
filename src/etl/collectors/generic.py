@@ -35,6 +35,8 @@ PAGINATED_ENDPOINTS = frozenset(
         Endpoint.ITENS_NOTAS_FISCAIS,
         Endpoint.AGENTES_PUBLICOS,
         Endpoint.LIQUIDACOES,
+        Endpoint.LICITANTES,
+        Endpoint.NOTAS_EMPENHOS,
         # Dimension/lookup tables (accepts pagination params)
         Endpoint.UNIDADES_ORCAMENTARIAS,
     }
@@ -72,10 +74,16 @@ class GenericCollector:
         if self.endpoint in NO_PARAMS_ENDPOINTS:
             return {}
 
-        return {
+        params = {
             "codigo_municipio": municipality_id,
             "exercicio_orcamento": f"{year}00",
         }
+
+        if self.endpoint in PAGINATED_ENDPOINTS:
+            params["quantidade"] = "100"
+            params["deslocamento"] = "0"
+
+        return params
 
     def _extract_records(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         """

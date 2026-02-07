@@ -38,7 +38,7 @@ class TransacoesCollector(MonthlyCollector):
         Endpoint.LICITANTES: "data_realizacao_licitacao",
         Endpoint.CONTRATOS: "data_contrato",
         Endpoint.CONTRATADOS: "data_contrato",
-        Endpoint.NOTAS_EMPENHO: "data_emissao_empenho",
+        Endpoint.NOTAS_EMPENHOS: "data_referencia_empenho",
     }
 
     # Endpoints that DON'T support quantidade/deslocamento pagination
@@ -265,9 +265,6 @@ class TransacoesCollector(MonthlyCollector):
                 rec_id_parts.append(
                     str(item.get("numero_sequencial_item_licitacao", "unk"))
                 )
-            elif self.endpoint == Endpoint.NOTAS_EMPENHO:
-                rec_id_parts.append(str(item.get("numero_empenho", "unk")))
-                rec_id_parts.append(str(item.get("codigo_orgao", "unk")))
 
             rec_id_parts.append(str(year))
             item_copy["id"] = "_".join(rec_id_parts)

@@ -130,11 +130,11 @@ class Endpoint(Enum):
     )
 
     # Expense Cycle Endpoints (Empenho -> Liquidação)
-    NOTAS_EMPENHO = (
-        "/notas_empenho",
+    NOTAS_EMPENHOS = (
+        "/notas_empenhos",
         APIBase.DEFAULT,
-        "notas_empenho",
-        "notas_empenho",
+        "notas_empenhos",
+        "notas_empenhos",
     )
     LIQUIDACOES = (
         "/liquidacoes",

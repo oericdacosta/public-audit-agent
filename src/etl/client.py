@@ -24,8 +24,8 @@ from src.etl.endpoints import APIBase, Endpoint
 logger = logging.getLogger(__name__)
 
 # Rate limit: 200 requests per second (API allows up to 500)
-# Rate limit: 20 requests concurrent (Safer limit for stability)
-RATE_LIMIT_CALLS = 20
+# Rate limit: 5 requests concurrent (SAFE mode to prevent WAF blocks)
+RATE_LIMIT_CALLS = 5
 RATE_LIMIT_PERIOD = 1.0  # seconds
 
 # Circuit breaker: open after 20 failures, reset after 30 seconds
@@ -92,10 +92,10 @@ class TCEClient:
             allowed_methods=["GET"],
         )
 
-        # Configure connection pooling (sized for high throughput)
+        # Configure connection pooling (sized for safety)
         adapter = HTTPAdapter(
-            pool_connections=50,
-            pool_maxsize=200,
+            pool_connections=5,
+            pool_maxsize=20,
             max_retries=retry_strategy,
         )
 

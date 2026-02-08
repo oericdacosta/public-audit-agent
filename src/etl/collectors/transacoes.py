@@ -247,26 +247,12 @@ class TransacoesCollector(MonthlyCollector):
             item_copy = item.copy()
 
             # ID GENERATION
-            rec_id_parts = [municipio_id]
-            if self.endpoint == Endpoint.LICITACOES:
-                rec_id_parts.append(str(item.get("numero_licitacao", "unk")))
-                rec_id_parts.append(str(item.get("numero_processo_licitatorio", "unk")))
-            elif self.endpoint == Endpoint.CONTRATOS:
-                rec_id_parts.append(str(item.get("numero_contrato", "unk")))
-            elif self.endpoint == Endpoint.CONTRATADOS:
-                rec_id_parts.append(str(item.get("numero_contrato", "unk")))
-                rec_id_parts.append(str(item.get("documento_negociante", "unk")))
-            elif self.endpoint == Endpoint.LICITANTES:
-                rec_id_parts.append(str(item.get("numero_licitacao", "unk")))
-                rec_id_parts.append(str(item.get("numero_documento_negociante", "unk")))
-            elif self.endpoint == Endpoint.ITENS_LICITACOES:
-                rec_id_parts.append(str(item.get("numero_licitacao", "unk")))
-                rec_id_parts.append(
-                    str(item.get("numero_sequencial_item_licitacao", "unk"))
-                )
+            # ID GENERATION: Use content hash for robustness
+            import hashlib
 
-            rec_id_parts.append(str(year))
-            item_copy["id"] = "_".join(rec_id_parts)
+            serialized = json.dumps(item, sort_keys=True, default=str)
+            content_hash = hashlib.md5(serialized.encode()).hexdigest()
+            item_copy["id"] = f"{municipio_id}_{content_hash}_{year}"
             item_copy["municipio_id"] = municipio_id
             item_copy["exercicio_orcamento"] = str(year)
             item_copy["raw_data"] = json.dumps(item)

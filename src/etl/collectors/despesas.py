@@ -182,13 +182,15 @@ class ExpensesCollector(MonthlyCollector):
     ) -> list[tuple]:
         """Sync helper to process records."""
         records = []
-        for i, item in enumerate(all_records):
+        for item in all_records:
             month_ref = item.get("data_referencia", f"{year}00")
-            elem = item.get("codigo_elemento_despesa", "0")
-            val = item.get("valor_pago_no_mes", "0")
 
-            # Use deterministic hash if possible, or fallback to index
-            exp_id = f"{municipio_id}_{month_ref}_{elem}_{val}_{i}"
+            # Use content hash for robustness
+            import hashlib
+
+            serialized = json.dumps(item, sort_keys=True, default=str)
+            content_hash = hashlib.md5(serialized.encode()).hexdigest()
+            exp_id = f"{municipio_id}_{content_hash}_{year}"
 
             records.append(
                 (

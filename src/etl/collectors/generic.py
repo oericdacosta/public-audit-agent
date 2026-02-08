@@ -252,46 +252,15 @@ class GenericCollector:
         return len(all_records)
 
     def _get_id_field(self, record: dict) -> str:
-        """Generate a unique identifier from record fields."""
-        # Try common ID fields (transactional)
-        for field in [
-            # Transactional/Detailed IDs (High specificity)
-            "numero_talao_receita",
-            "nu_talao_receita_tx",
-            "numero_nota_fiscal",
-            "numero_liquidacao",
-            "numero_empenho",
-            "numero_pagamento",
-            "numero_nota_pagamento",
-            "codigo_agente",
-            "numero_matricula",
-            "numero_contrato",
-            "numero_licitacao",
-            "numero_processo",
-            "id_contrato",
-            "id_licitacao",
-            # Dimension/Lookup Table IDs
-            "codigo_funcao",
-            "codigo_orgao",
-            "codigo_unidade_orcamentaria",
-            "codigo_unidade",
-            "codigo_ordenador",
-            "numero_conta",
-            "codigo_programa",
-            "codigo_projeto_atividade",
-            "codigo_receita",
-            "codigo_rubrica",
-            # Last resort field (highly shared, often causes collisions)
-            "codigo_municipio",
-        ]:
-            if field in record:
-                return str(record[field])
-        # Fallback: hash of record
+        """Generate a unique identifier based on record content hash."""
         import hashlib
+        import json
 
-        return hashlib.md5(  # noqa: S324
-            str(sorted(record.items())).encode(), usedforsecurity=False
-        ).hexdigest()[:12]
+        # Use valid primitives for JSON serialization to ensure deterministic hash
+        # We sort keys to ensure consistent ordering
+        serialized = json.dumps(record, sort_keys=True, default=str)
+
+        return hashlib.md5(serialized.encode()).hexdigest()
 
     async def run(self, municipality_id: str, year: int) -> int:
         """

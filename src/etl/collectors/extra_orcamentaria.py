@@ -90,10 +90,14 @@ class DespesaExtraOrcamentariaCollector(MonthlyCollector):
     ) -> list[tuple]:
         """Sync helper to process records."""
         records = []
-        for i, item in enumerate(all_records):
+        for item in all_records:
             month_ref = item.get("data_referencia", f"{year}00")
-            conta = item.get("codigo_conta_extraorcamentaria", "0")
-            rec_id = f"{municipio_id}_{month_ref}_{conta}_{i}"
+            # Use content hash for robustness
+            import hashlib
+
+            serialized = json.dumps(item, sort_keys=True, default=str)
+            content_hash = hashlib.md5(serialized.encode()).hexdigest()
+            rec_id = f"{municipio_id}_{content_hash}_{year}"
 
             records.append(
                 (
@@ -249,10 +253,14 @@ class ReceitaExtraOrcamentariaCollector(MonthlyCollector):
     ) -> list[tuple]:
         """Sync helper to process records."""
         records = []
-        for i, item in enumerate(all_records):
+        for item in all_records:
             month_ref = item.get("data_referencia", f"{year}00")
-            conta = item.get("codigo_conta_extraorcamentaria", "0")
-            rec_id = f"{municipio_id}_{month_ref}_{conta}_{i}"
+            # Use content hash for robustness
+            import hashlib
+
+            serialized = json.dumps(item, sort_keys=True, default=str)
+            content_hash = hashlib.md5(serialized.encode()).hexdigest()
+            rec_id = f"{municipio_id}_{content_hash}_{year}"
 
             records.append(
                 (

@@ -246,5 +246,45 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Run async event loop
-    asyncio.run(run_etl(args.municipality, args.year))
+    # Check config for defaults
+    settings = get_settings()
+    default_municipality = settings.get("audit", {}).get("city_code")
+    if not default_municipality:
+        raise ValueError("City code not found in config.yaml")
+
+    # Determine years to process
+    target_municipality = args.municipality or str(default_municipality)
+    target_year = args.year
+
+    years = []
+    if target_year:
+        years = [int(target_year)]
+    else:
+        lookback_years = settings.get("audit", {}).get("data_retention_years", 10)
+        current_date_year = datetime.now().year
+
+        # Start from the last full year (current_year - 1)
+        start_year = current_date_year - 1
+
+        years = list(range(start_year, start_year - lookback_years, -1))
+
+    logger.info("Years Window to Process: %s", years)
+
+    # --- SEQUENTIAL YEAR PROCESSING ---
+    # We process each year as a separate async event loop execution
+    # This mimics Airflow task behavior (one task per year) and avoids WAF blocks.
+    for year in years:
+        logger.info(f"=== Starting ETL for Year {year} ===")
+        try:
+            asyncio.run(run_etl(target_municipality, str(year)))
+            logger.info(f"✅ Year {year} completed successfully.")
+            # Optional: Add a small sleep between years to be extra safe
+            import time
+
+            time.sleep(2)
+        except Exception as e:
+            logger.error(f"❌ Year {year} failed: {e}")
+            # Continue to next year even if one fails
+            continue
+
+    logger.info("Batch Collection Cycle Finished.")

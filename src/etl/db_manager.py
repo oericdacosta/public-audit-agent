@@ -14,7 +14,7 @@ from typing import Any, Generator
 import duckdb
 from duckdb import DuckDBPyConnection
 
-from src.config import get_settings
+from src.config import CONFIG_PATH, get_settings
 from src.exceptions import ConfigurationError, DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,10 @@ class DatabaseManager:
                 db_path_str = db_path_str.replace(".db", ".duckdb").replace(
                     ".sqlite", ".duckdb"
                 )
-            self.db_path = db_path_str
+            db_path = Path(db_path_str)
+            if not db_path.is_absolute():
+                db_path = (CONFIG_PATH.parent / db_path).resolve()
+            self.db_path = str(db_path)
         except KeyError as e:
             raise ConfigurationError(
                 "Missing configuration key",

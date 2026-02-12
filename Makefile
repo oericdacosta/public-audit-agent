@@ -1,4 +1,4 @@
-.PHONY: up down restart logs shell clean lint test typecheck format install check security docker-build docker-test ci
+.PHONY: up down restart logs shell clean lint test typecheck format install check security docker-build docker-test ci airflow-up airflow-down airflow-logs airflow-restart airflow-trigger
 
 # Project Variables
 COMPOSE = docker compose
@@ -103,6 +103,30 @@ etl:
 	@echo "Running ETL process..."
 	@uv run python -m src.etl.main --municipality $(or $(municipality),162) $(if $(year),--year $(year),)
 	@echo "✅ ETL complete!"
+
+# ──────────────────────────────────────────────────────────
+# Airflow Commands
+# ──────────────────────────────────────────────────────────
+airflow-up:
+	@echo "🚀 Starting Airflow..."
+	@mkdir -p logs/airflow data
+	@grep -q '^AIRFLOW_UID=' .env 2>/dev/null || echo "AIRFLOW_UID=$$(id -u)" >> .env
+	docker compose -f docker-compose.airflow.yml up -d
+	@echo "✅ Airflow running at http://localhost:8080 (admin/admin)"
+
+airflow-down:
+	@echo "Stopping Airflow..."
+	docker compose -f docker-compose.airflow.yml down
+
+airflow-logs:
+	docker compose -f docker-compose.airflow.yml logs -f airflow-scheduler
+
+airflow-restart: airflow-down airflow-up
+
+airflow-trigger:
+	@echo "🔄 Triggering ETL DAG..."
+	docker compose -f docker-compose.airflow.yml exec airflow-webserver \
+		airflow dags trigger civic_audit_etl
 
 # ──────────────────────────────────────────────────────────
 # Cleanup

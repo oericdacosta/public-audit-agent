@@ -54,7 +54,6 @@ ALLOWED_TABLES: frozenset[str] = frozenset(
         "agentes_publicos",
         "notas_empenho",
         "liquidacoes",
-        "negociantes",
     }
 )
 

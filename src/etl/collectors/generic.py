@@ -19,10 +19,6 @@ logger = logging.getLogger(__name__)
 # Endpoints that don't require any parameters (global lookups)
 NO_PARAMS_ENDPOINTS = frozenset({Endpoint.MUNICIPIOS, Endpoint.FUNCOES})
 
-# Endpoints that cannot be bulk-extracted (require specific search params)
-SKIP_ENDPOINTS = frozenset(
-    {Endpoint.NEGOCIANTES}  # Requires 'nome_negociante' search parameter
-)
 
 # Endpoints that require pagination parameters and looping
 PAGINATED_ENDPOINTS = frozenset(
@@ -273,10 +269,6 @@ class GenericCollector:
         Returns:
             Count of records inserted
         """
-        if self.endpoint in SKIP_ENDPOINTS:
-            logger.debug("Skipping %s (requires search params)", self.endpoint.name)
-            return 0
-
         if self.endpoint in PAGINATED_ENDPOINTS:
             return await self._run_paginated(municipality_id, year)
 

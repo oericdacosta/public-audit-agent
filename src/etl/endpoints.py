@@ -138,14 +138,6 @@ class Endpoint(Enum):
         "liquidacoes",
     )
 
-    # Vendor Lookup Table
-    NEGOCIANTES = (
-        "/negociantes",
-        APIBase.DEFAULT,
-        "negociantes",
-        "negociantes",
-    )
-
     # Dimension/Lookup Tables
     MUNICIPIOS = (
         "/municipios",

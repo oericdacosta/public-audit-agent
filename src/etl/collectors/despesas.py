@@ -189,7 +189,7 @@ class ExpensesCollector(MonthlyCollector):
             import hashlib
 
             serialized = json.dumps(item, sort_keys=True, default=str)
-            content_hash = hashlib.md5(serialized.encode()).hexdigest()
+            content_hash = hashlib.sha256(serialized.encode()).hexdigest()
             exp_id = f"{municipio_id}_{content_hash}_{year}"
 
             records.append(

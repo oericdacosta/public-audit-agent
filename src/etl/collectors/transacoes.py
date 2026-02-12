@@ -251,7 +251,7 @@ class TransacoesCollector(MonthlyCollector):
             import hashlib
 
             serialized = json.dumps(item, sort_keys=True, default=str)
-            content_hash = hashlib.md5(serialized.encode()).hexdigest()
+            content_hash = hashlib.sha256(serialized.encode()).hexdigest()
             item_copy["id"] = f"{municipio_id}_{content_hash}_{year}"
             item_copy["municipio_id"] = municipio_id
             item_copy["exercicio_orcamento"] = str(year)

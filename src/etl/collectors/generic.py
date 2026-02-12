@@ -256,7 +256,7 @@ class GenericCollector:
         # We sort keys to ensure consistent ordering
         serialized = json.dumps(record, sort_keys=True, default=str)
 
-        return hashlib.md5(serialized.encode()).hexdigest()
+        return hashlib.sha256(serialized.encode()).hexdigest()
 
     async def run(self, municipality_id: str, year: int) -> int:
         """

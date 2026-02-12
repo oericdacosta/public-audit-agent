@@ -1,14 +1,15 @@
 """
 Database Manager.
 
-Handles DuckDB database connections, schema management, and queries.
+Handles DuckDB database connections, schema initialization, and query execution.
+Uses a single persistent connection with a lock for thread safety.
 """
 
 import logging
-import unicodedata
+import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Generator, Optional
+from typing import Any, Generator
 
 import duckdb
 from duckdb import DuckDBPyConnection
@@ -18,20 +19,57 @@ from src.exceptions import ConfigurationError, DatabaseError
 
 logger = logging.getLogger(__name__)
 
+# Schema file location relative to this module
+_SCHEMA_DIR = Path(__file__).parent / "schema"
+_TABLES_SQL = _SCHEMA_DIR / "tables.sql"
+
+# Allowlist of valid table names for SQL injection protection
+ALLOWED_TABLES: frozenset[str] = frozenset(
+    {
+        "licitacoes",
+        "despesas",
+        "receitas",
+        "balancete_despesa_extra",
+        "balancete_receita_extra",
+        "etl_metadata",
+        # Dimension/lookup tables
+        "municipios",
+        "orgaos",
+        "unidades_orcamentarias",
+        "funcoes",
+        "ordenadores",
+        "contas_bancarias",
+        "programas",
+        "orcamento_despesa",
+        "orcamento_receita",
+        "taloes_receitas",
+        "taloes_extras",
+        "contratos",
+        "contratados",
+        "itens_licitacoes",
+        "licitantes",
+        "notas_fiscais",
+        "notas_pagamentos",
+        "itens_notas_fiscais",
+        "agentes_publicos",
+        "notas_empenho",
+        "liquidacoes",
+    }
+)
+
 
 class DatabaseManager:
     """
-    Manages DuckDB database operations.
+    Manages DuckDB database connections and core operations.
 
-    Provides methods for schema initialization, query execution,
-    and schema introspection.
+    Uses a single persistent connection with a lock to avoid
+    DuckDB file handle conflicts in multi-threaded environments.
     """
 
     def __init__(self) -> None:
         """Initialize the database manager with configured path."""
         settings = get_settings()
         try:
-            # Fallback to .duckdb extension if still pointing to .db
             db_path_str = settings["database"]["path"]
             if db_path_str.endswith(".db") or db_path_str.endswith(".sqlite"):
                 db_path_str = db_path_str.replace(".db", ".duckdb").replace(
@@ -44,11 +82,21 @@ class DatabaseManager:
                 details="'database.path' not found in config.yaml",
             ) from e
         self._setup_directories()
+        # Single persistent connection + lock for thread safety
+        self._conn: DuckDBPyConnection = duckdb.connect(self.db_path)
+        self._conn_lock = threading.Lock()
+        # Cache for table column info
+        self._columns_cache: dict[str, list[str]] = {}
 
     def _validate_table_name(self, table_name: str) -> None:
-        """Video game validation for table names to prevent SQL injection."""
-        if not table_name.isidentifier():
-            raise ValueError(f"Invalid table name: {table_name}")
+        """Validate table name against allowlist to prevent SQL injection."""
+        if table_name not in ALLOWED_TABLES:
+            if not table_name.isidentifier():
+                raise ValueError(f"Invalid table name: {table_name}")
+            logger.warning(
+                "Table '%s' not in allowlist. Consider adding it.",
+                table_name,
+            )
 
     def _setup_directories(self) -> None:
         """Create necessary directories for database and logs."""
@@ -60,16 +108,13 @@ class DatabaseManager:
     @contextmanager
     def get_connection(self) -> Generator[DuckDBPyConnection, None, None]:
         """
-        Get a database connection using context manager pattern.
+        Get exclusive access to the shared database connection.
 
-        Yields:
-            DuckDB connection that auto-closes on exit.
+        Uses a lock to serialize all database operations for thread safety.
+        DuckDB does not support concurrent writes from multiple connections.
         """
-        conn = duckdb.connect(self.db_path)
-        try:
-            yield conn
-        finally:
-            conn.close()
+        with self._conn_lock:
+            yield self._conn
 
     def get_raw_connection(self) -> DuckDBPyConnection:
         """
@@ -80,112 +125,28 @@ class DatabaseManager:
         """
         return duckdb.connect(self.db_path)
 
+    def close(self) -> None:
+        """Close the persistent connection."""
+        with self._conn_lock:
+            self._conn.close()
+
     def initialize_schema(self) -> None:
-        """Initialize all database tables and indexes."""
+        """
+        Initialize all database tables and indexes from SQL file.
+
+        Loads schema definitions from src/etl/schema/tables.sql.
+        """
+        if not _TABLES_SQL.exists():
+            raise ConfigurationError(
+                "Schema file not found",
+                details=f"Expected schema at: {_TABLES_SQL}",
+            )
+
+        schema_sql = _TABLES_SQL.read_text(encoding="utf-8")
+
         with self.get_connection() as conn:
-            # Enable JSON extension if not already enabled (usually built-in)
-            # conn.execute("INSTALL json; LOAD json;")
-
-            # Table: Licitações (Tenders)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS licitacoes (
-                    id TEXT PRIMARY KEY,
-                    municipio_id TEXT,
-                    numero_licitacao TEXT,
-                    numero_processo TEXT,
-                    objeto_licitacao TEXT,
-                    modalidade_licitacao TEXT,
-                    data_realizacao_licitacao TEXT,
-                    valor_estimado DOUBLE,
-                    situacao_licitacao TEXT,
-                    exercicio_orcamento TEXT,
-                    raw_data JSON,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_lic_municipio "
-                "ON licitacoes(municipio_id)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_lic_objeto "
-                "ON licitacoes(objeto_licitacao)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_lic_mun_exerc "
-                "ON licitacoes(municipio_id, exercicio_orcamento)"
-            )
-
-            # Table: Despesas (Expenses)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS despesas (
-                    id TEXT PRIMARY KEY,
-                    municipio_id TEXT,
-                    exercicio_orcamento TEXT,
-                    mes_referencia TEXT,
-                    codigo_orgao TEXT,
-                    codigo_unidade_orcamentaria TEXT,
-                    codigo_funcao TEXT,
-                    codigo_subfuncao TEXT,
-                    codigo_programa TEXT,
-                    codigo_elemento_despesa TEXT,
-                    valor_empenhado DOUBLE,
-                    valor_liquidado DOUBLE,
-                    valor_pago DOUBLE,
-                    raw_data JSON,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_desp_municipio "
-                "ON despesas(municipio_id)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_desp_mun_exerc "
-                "ON despesas(municipio_id, exercicio_orcamento)"
-            )
-
-            # Table: Receitas (Revenue)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS receitas (
-                    id TEXT PRIMARY KEY,
-                    municipio_id TEXT,
-                    exercicio_orcamento TEXT,
-                    mes_referencia TEXT,
-                    codigo_orgao TEXT,
-                    codigo_unidade_orcamentaria TEXT,
-                    codigo_receita TEXT,
-                    descricao_receita TEXT,
-                    valor_orcado DOUBLE,
-                    valor_arrecadado DOUBLE,
-                    raw_data JSON,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rec_municipio ON receitas(municipio_id)"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_rec_mun_exerc "
-                "ON receitas(municipio_id, exercicio_orcamento)"
-            )
-
-            # Table: Metadata
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS etl_metadata (
-                    municipio_id TEXT,
-                    year INTEGER,
-                    source TEXT,
-                    status TEXT,
-                    record_count INTEGER,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (municipio_id, year, source)
-                )
-            """)
-
-            # Implicitly committed. Explicit commit is no-op in AutoCommit mode
-            # but good practice if disabling autocommit.
-            # conn.commit()
+            conn.execute(schema_sql)
+            logger.info("Database schema initialized from %s", _TABLES_SQL.name)
 
     def execute_query(self, query: str) -> list[dict[str, Any]]:
         """
@@ -204,94 +165,33 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 from typing import cast
 
-                # Use .df() to leverage Pandas for easy dict conversion
                 df = conn.execute(query).df()
                 return cast(list[dict[str, Any]], df.to_dict(orient="records"))
         except (duckdb.Error, Exception) as e:
             raise DatabaseError("Query execution failed", details=str(e)) from e
 
-    def get_all_tables(self) -> list[str]:
-        """
-        Get list of all table names in the database.
+    def _get_table_columns(
+        self, table_name: str, conn: DuckDBPyConnection
+    ) -> list[str]:
+        """Get table columns, using cache when available."""
+        if table_name in self._columns_cache:
+            return self._columns_cache[table_name]
 
-        Returns:
-            List of table names.
-        """
-        with self.get_connection() as conn:
-            # DuckDB-specific system query
-            rows = conn.execute("SHOW TABLES").fetchall()
-            return [row[0] for row in rows]
+        columns = [
+            col[1]
+            for col in conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+        ]
 
-    def get_start_schema(
-        self, limit_tables: Optional[list[str]] = None
-    ) -> dict[str, str]:
-        """
-        Get schema definitions for tables.
-        For DuckDB, we reconstruct a CREATE TABLE statement from DESCRIBE.
-        """
-        with self.get_connection() as conn:
-            tables = self.get_all_tables()
-            if limit_tables:
-                tables = [t for t in tables if t in limit_tables]
-
-            schemas = {}
-            for table in tables:
-                # Reconstruct simplified DDL
-                columns = conn.execute(f"DESCRIBE {table}").fetchall()
-                # columns row: column_name, column_type, null, key, default, extra
-                cols_ddl = []
-                for col in columns:
-                    name = col[0]
-                    dtype = col[1]
-                    is_null = col[2]
-                    key = col[3]
-                    # default = col[4]
-
-                    part = f"{name} {dtype}"
-                    if key == "PRI":
-                        part += " PRIMARY KEY"
-                    elif is_null == "NO":
-                        part += " NOT NULL"
-                    cols_ddl.append(part)
-
-                ddl = (
-                    f"CREATE TABLE {table} (\n    " + ",\n    ".join(cols_ddl) + "\n);"
-                )
-                schemas[table] = ddl
-            return schemas
-
-    def search_schema(self, keyword: str) -> dict[str, str]:
-        """
-        Search table names and schema definitions for a keyword.
-        """
-
-        def normalize_text(text: str) -> str:
-            if not text:
-                return ""
-            return "".join(
-                c
-                for c in unicodedata.normalize("NFD", text)
-                if unicodedata.category(c) != "Mn"
-            ).lower()
-
-        schemas = self.get_start_schema()
-        results: dict[str, str] = {}
-        keyword_norm = normalize_text(keyword)
-
-        for name, sql in schemas.items():
-            name_norm = normalize_text(name)
-            sql_norm = normalize_text(sql)
-
-            if keyword_norm in name_norm or keyword_norm in sql_norm:
-                results[name] = sql
-
-        return results
+        self._columns_cache[table_name] = columns
+        return columns
 
     def load_data(
         self, table_name: str, data: dict[str, Any] | list[dict[str, Any]]
     ) -> None:
         """
-        Load JSON data into a table, creating it if it doesn't exist.
+        Load JSON data into a table using DataFrame INSERT.
+
+        Uses DuckDB's native DataFrame support with UPSERT for tables with 'id'.
 
         Args:
             table_name: Target table name.
@@ -300,33 +200,57 @@ class DatabaseManager:
         if not data:
             return
 
-        # Ensure data is a list
         if isinstance(data, dict):
-            # If the API returns a single object wrapper (e.g. {"data": [...]})
-            # we might need adjustment, but assuming list of rows for now
-            # or wrapping single object in list.
             data = [data]
 
-        # We use a temporary file or memory to load into DuckDB
-        # A simple way is to register the list of dicts as a virtual table in Python
-        # DuckDB Python client handles list of dicts automatically in insert/create
+        import pandas as pd
+
+        df = pd.DataFrame(data)
+
+        if df.empty:
+            return
 
         try:
-            with self.get_connection() as conn:
-                # Validate input to prevent SQL injection
-                self._validate_table_name(table_name)
+            self._validate_table_name(table_name)
 
-                # 1. Create Table if not exists (Schema Inference)
-                # We create a temporary view from the data first to infer types
+            with self.get_connection() as conn:
                 conn.execute(
                     f"CREATE TABLE IF NOT EXISTS {table_name} "  # nosec B608
-                    "AS SELECT * FROM data LIMIT 0"
+                    "AS SELECT * FROM df LIMIT 0"
                 )
 
-                # 2. Insert Data
-                # Note: 'data' variable is auto-magically recognized by DuckDB
-                # python client
-                conn.execute(f"INSERT INTO {table_name} SELECT * FROM data")  # nosec B608
+                columns = self._get_table_columns(table_name, conn)
+
+                # Filter DataFrame to only columns that exist in the table
+                valid_cols = [c for c in df.columns if c in columns]
+                if not valid_cols:
+                    logger.warning(
+                        f"No matching columns between data and table {table_name}"
+                    )
+                    logger.debug(f"DataFrame columns: {list(df.columns)}")
+                    logger.debug(f"Table columns: {columns}")
+                    return
+
+                df_cols = ", ".join(valid_cols)
+
+                if "id" in columns and "id" in valid_cols:
+                    update_cols = [c for c in valid_cols if c != "id"]
+                    update_set = ", ".join(
+                        [f"{col} = EXCLUDED.{col}" for col in update_cols]
+                    )
+
+                    conn.execute(
+                        f"INSERT INTO {table_name} ({df_cols}) "  # nosec B608
+                        f"SELECT {df_cols} FROM df "
+                        f"ON CONFLICT (id) DO UPDATE SET {update_set}"
+                    )
+                else:
+                    conn.execute(
+                        f"INSERT INTO {table_name} ({df_cols}) "  # nosec B608
+                        f"SELECT {df_cols} FROM df"
+                    )
+
+                conn.commit()
 
         except (duckdb.Error, Exception) as e:
             logger.error(f"Failed to load data into {table_name}: {e}")

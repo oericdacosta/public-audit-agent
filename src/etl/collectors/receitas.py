@@ -1,100 +1,108 @@
 """
 Revenue (Receitas) Collector.
 
-Collects public revenue data from the TCE API.
+Collects public revenue data from the TCE API with parallel fetching.
+Uses MonthlyCollector base class for shared monthly iteration logic.
+Note: This endpoint does NOT support quantidade/deslocamento pagination.
 """
 
+import asyncio
 import json
 import logging
-from typing import Any, Iterator
 
 from src.etl.endpoints import Endpoint
 
-from .base import BaseCollector
+from .base import MonthlyCollector
 
 logger = logging.getLogger(__name__)
 
 
-class RevenueCollector(BaseCollector):
-    """Collector for public revenue (receita) data."""
+class RevenueCollector(MonthlyCollector):
+    """Collector for public revenue (receita) data with parallel fetching."""
 
-    def run(self, municipio_id: str, year: int) -> int:
-        """
-        Run the revenue collection for a municipality and year.
+    collector_name = "Receitas"
 
-        Returns:
-            Total number of records collected.
-        """
-        total = 0
-        logger.info(">>> Starting Receitas")
+    async def _fetch_month(
+        self, municipio_id: str, year: int, month: int
+    ) -> list[dict]:
+        """Fetch revenue data for a single month (no pagination)."""
+        month_ref = f"{year}{month:02d}"
+        params = {
+            "codigo_municipio": municipio_id,
+            "exercicio_orcamento": f"{year}00",
+            "data_referencia": month_ref,
+        }
+        url = self.client.build_url(Endpoint.RECEITAS)
 
-        for batch, month_ref in self.fetch_by_month(municipio_id, year):
-            saved = self.save(batch, municipio_id, year, month_ref)
-            total += saved
+        data = await self.client.fetch_json(url, params)
+        if not data:
+            return []
 
-        logger.info("Receitas completed: %d records.", total)
-        return total
+        return self._extract_records(data)
 
-    def fetch_by_month(
-        self, municipio_id: str, year: int
-    ) -> Iterator[tuple[list[dict[str, Any]], str]]:
-        """
-        Fetch revenue data month by month.
+    def _extract_records(self, data: dict) -> list[dict]:
+        """Extract records from API response."""
+        content = None
 
-        Yields:
-            Tuples of (batch_data, month_reference).
-        """
-        for month in range(1, 13):
-            month_ref = f"{year}{month:02d}"
-            params = {
-                "codigo_municipio": municipio_id,
-                "exercicio_orcamento": f"{year}00",
-                "data_referencia": month_ref,
-            }
-            url = self.client.build_url(Endpoint.RECEITAS)
+        if "rsp" in data and isinstance(data["rsp"], dict):
+            content = data["rsp"].get("_content")
+        elif "data" in data:
+            content = data["data"]
+        elif "balancete_receita_orcamentaria" in data:
+            content = data["balancete_receita_orcamentaria"]
 
-            logger.info("Fetching Receitas: %s", month_ref)
-            data = self.client.fetch_json(url, params)
+        if content:
+            if isinstance(content, list):
+                return content
+            elif isinstance(content, dict):
+                return [content]
 
-            if data:
-                content = None
-                if "rsp" in data and "_content" in data["rsp"]:
-                    content = data["rsp"]["_content"]
-                else:
-                    content = (
-                        data.get("data")
-                        or data.get("rows")
-                        or data.get("balancete_receita_orcamentaria")
-                    )
+        return []
 
-                if content:
-                    if isinstance(content, list):
-                        yield (content, month_ref)
-                    elif isinstance(content, dict):
-                        yield ([content], month_ref)
-
-    def save(
-        self,
-        batch_data: list[dict[str, Any]],
-        municipio_id: str,
-        year: int,
-        month_ref: str,
+    async def _save_all(
+        self, all_records: list[dict], municipio_id: str, year: int
     ) -> int:
-        """
-        Save revenue records to the database using bulk insert.
-
-        Returns:
-            Number of records saved.
-        """
-        if not batch_data:
+        """Save all records to database in one bulk insert."""
+        if not all_records:
             return 0
 
-        # Transform records for bulk insert
+        # Run CPU-bound processing in thread
+        records = await asyncio.to_thread(
+            self._process_records_sync, all_records, municipio_id, year
+        )
+
+        columns = [
+            "id",
+            "municipio_id",
+            "exercicio_orcamento",
+            "mes_referencia",
+            "codigo_orgao",
+            "codigo_unidade_orcamentaria",
+            "codigo_receita",
+            "descricao_receita",
+            "valor_orcado",
+            "valor_arrecadado",
+            "raw_data",
+        ]
+
+        update_columns = ["valor_orcado", "valor_arrecadado", "raw_data"]
+
+        # Run Blocking DB write (bulk_upsert handles to_thread internally)
+        return await self.bulk_upsert("receitas", columns, records, update_columns)
+
+    def _process_records_sync(
+        self, all_records: list[dict], municipio_id: str, year: int
+    ) -> list[tuple]:
+        """Sync helper to process records."""
         records = []
-        for i, item in enumerate(batch_data):
-            rec_code = item.get("codigo_receita", "0")
-            val = item.get("valor_arrecadado_no_mes", "0")
-            rec_id = f"{municipio_id}_{month_ref}_{rec_code}_{val}_{i}"
+        for item in all_records:
+            month_ref = item.get("data_referencia", f"{year}00")
+            # Use content hash for robustness
+            import hashlib
+
+            serialized = json.dumps(item, sort_keys=True, default=str)
+            content_hash = hashlib.sha256(serialized.encode()).hexdigest()
+            rec_id = f"{municipio_id}_{content_hash}_{year}"
 
             records.append(
                 (
@@ -111,19 +119,4 @@ class RevenueCollector(BaseCollector):
                     json.dumps(item),
                 )
             )
-
-        columns = [
-            "id",
-            "municipio_id",
-            "exercicio_orcamento",
-            "mes_referencia",
-            "codigo_orgao",
-            "codigo_unidade_orcamentaria",
-            "codigo_receita",
-            "descricao_receita",
-            "valor_orcado",
-            "valor_arrecadado",
-            "raw_data",
-        ]
-
-        return self.bulk_insert("receitas", columns, records)
+        return records

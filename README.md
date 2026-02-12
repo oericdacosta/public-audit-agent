@@ -42,6 +42,44 @@ O sistema:
 
 ---
 
+## Módulo de Dados (ETL / Data Warehouse)
+
+O sistema conta com um **ETL robusto e assíncrono** responsável por construir o data warehouse local (DuckDB). Ele extrai dados de dezenas de endpoints do TCE-CE, transforma-os e carrega-os com eficiência.
+
+> 📘 **Documentação Completa**: Para detalhes técnicos aprofundados sobre coletores, schema e configurações, consulte o arquivo [ETL.md](./ETL.md).
+
+### Destaques da Arquitetura
+
+*   **Alta Performance**: Utiliza `asyncio` e `aiohttp` para requisições paralelas e arquivos **Parquet** para carga em lote (bulk inserts).
+*   **Resiliência**: Implementa **Circuit Breakers**, **Rate Limiting** (5 req/s) e retentativas automáticas com backoff exponencial.
+*   **Idempotência**: Rastreia o estado de cada tarefa (município/ano/endpoint) para permitir retomada segura em caso de falhas.
+*   **LGPD**: Mascaramento automático de dados sensíveis (CPFs) antes da persistência.
+
+### Fluxo de Dados
+
+```mermaid
+graph LR
+    API[API TCE-CE] -->|Async HTTP| Client[Relay Client]
+    Client -->|JSON Bruto| Collectors[Coletores Especializados]
+
+    subgraph ETL [Núcleo ETL]
+        Collectors -->|Transformação| Augment[Normalização & LGPD]
+        Augment -->|Parquet| DB[(DuckDB Local)]
+    end
+
+    DB -->|SQL| Agents[Agentes de IA]
+    style DB fill:#f9f,stroke:#333,stroke-width:2px
+```
+
+### Principais Dados Coletados
+
+*   **Finanças**: Despesas e Receitas orçamentárias detalhadas.
+*   **Contratos**: Licitações, contratos, aditivos e participantes.
+*   **Pessoal**: Agentes públicos e folha de pagamento.
+*   **Fiscal**: Notas fiscais e pagamentos.
+
+---
+
 ## Arquitetura
 
 ### Workflow Multi-Agente (LangGraph)

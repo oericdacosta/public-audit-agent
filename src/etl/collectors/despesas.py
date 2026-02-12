@@ -1,117 +1,196 @@
 """
 Expenses (Despesas) Collector.
 
-Collects public expense data from the TCE API.
+Collects public expense data from the TCE API with parallel fetching.
+Uses MonthlyCollector base class for shared monthly iteration logic.
 """
 
+import asyncio
 import json
 import logging
-from typing import Any, Iterator
 
 from src.etl.endpoints import Endpoint
 
-from .base import BaseCollector
+from .base import MonthlyCollector
 
 logger = logging.getLogger(__name__)
 
 
-class ExpensesCollector(BaseCollector):
-    """Collector for public expense (despesa) data."""
+class ExpensesCollector(MonthlyCollector):
+    """Collector for public expense (despesa) data with parallel fetching."""
 
-    def run(self, municipio_id: str, year: int) -> int:
-        """
-        Run the expense collection for a municipality and year.
+    collector_name = "Despesas"
 
-        Returns:
-            Total number of records collected.
-        """
-        total = 0
-        logger.info(">>> Starting Despesas (Financial)")
+    async def _fetch_month(
+        self, municipio_id: str, year: int, month: int
+    ) -> list[dict]:
+        """Fetch a single month with parallel pagination."""
+        month_ref = f"{year}{month:02d}"
+        url = self.client.build_url(Endpoint.DESPESAS)
 
-        for batch, month_ref in self.fetch_by_month(municipio_id, year):
-            saved = self.save(batch, municipio_id, year, month_ref)
-            total += saved
+        # First request: get total and first batch
+        page_size = 500
+        params = {
+            "codigo_municipio": municipio_id,
+            "exercicio_orcamento": f"{year}00",
+            "data_referencia": month_ref,
+            "quantidade": str(page_size),
+            "deslocamento": "0",
+        }
 
-        logger.info("Despesas completed: %d records.", total)
-        return total
+        first_response = await self.client.fetch_json(url, params)
+        if not first_response:
+            return []
 
-    def fetch_by_month(
-        self, municipio_id: str, year: int
-    ) -> Iterator[tuple[list[dict[str, Any]], str]]:
-        """
-        Fetch expense data month by month in parallel.
+        first_batch, total = self._extract_records_and_total(first_response)
+        if not first_batch:
+            return []
 
-        Yields:
-            Tuples of (batch_data, month_reference).
-        """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # If total unknown, estimate from first page
+        if not total:
+            total = len(first_batch)
+        logger.debug("Month %s: Found %d records", month_ref, total)
 
-        months = range(1, 13)
-        futures = {}
+        # If all records fit in first page, done
+        if total <= page_size and len(first_batch) < page_size:
+            return first_batch
 
-        # Parallelize fetching of 12 months
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            for month in months:
-                month_ref = f"{year}{month:02d}"
-                params = {
-                    "codigo_municipio": municipio_id,
-                    "exercicio_orcamento": f"{year}00",
-                    "data_referencia": month_ref,
-                }
-                url = self.client.build_url(Endpoint.DESPESAS)
+        # Fetch remaining pages in parallel
+        return await self._fetch_remaining_pages(
+            url, municipio_id, year, month_ref, first_batch, total, page_size
+        )
 
-                # Submit task
-                future = executor.submit(self.client.fetch_json, url, params)
-                futures[future] = month_ref
-
-            # Process as they complete
-            for future in as_completed(futures):
-                month_ref = futures[future]
-                try:
-                    logger.info("Fetching Despesas: %s", month_ref)
-                    data = future.result()
-
-                    if data:
-                        content = None
-                        if "rsp" in data and "_content" in data["rsp"]:
-                            content = data["rsp"]["_content"]
-                        else:
-                            content = (
-                                data.get("data")
-                                or data.get("rows")
-                                or data.get("balancete_despesa_orcamentaria")
-                            )
-
-                        if content:
-                            if isinstance(content, list):
-                                yield (content, month_ref)
-                            elif isinstance(content, dict):
-                                yield ([content], month_ref)
-                except Exception as e:
-                    logger.error("Failed to fetch Despesas for %s: %s", month_ref, e)
-
-    def save(
+    async def _fetch_remaining_pages(
         self,
-        batch_data: list[dict[str, Any]],
+        url: str,
         municipio_id: str,
         year: int,
         month_ref: str,
-    ) -> int:
-        """
-        Save expense records to the database using bulk insert.
+        first_page: list[dict],
+        total: int,
+        page_size: int = 500,
+    ) -> list[dict]:
+        """Fetch all remaining pages after the first one."""
+        all_records = list(first_page)
+        offsets = list(range(page_size, total, page_size))
 
-        Returns:
-            Number of records saved.
-        """
-        if not batch_data:
+        tasks = [
+            self._fetch_page(url, municipio_id, year, month_ref, offset)
+            for offset in offsets
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for offset, result in zip(offsets, results, strict=False):
+            if isinstance(result, Exception):
+                logger.warning("API error at offset %d: %s", offset, result)
+            elif isinstance(result, list):
+                all_records.extend(result)
+
+        return all_records
+
+    async def _fetch_page(
+        self,
+        url: str,
+        municipio_id: str,
+        year: int,
+        month_ref: str,
+        offset: int,
+        page_size: int = 500,
+    ) -> list[dict]:
+        """Fetch a single page of data."""
+        params = {
+            "codigo_municipio": municipio_id,
+            "exercicio_orcamento": f"{year}00",
+            "data_referencia": month_ref,
+            "quantidade": str(page_size),
+            "deslocamento": str(offset),
+        }
+        response = await self.client.fetch_json(url, params)
+        if response:
+            records, _ = self._extract_records_and_total(response)
+            return records
+        return []
+
+    def _extract_records_and_total(self, data: dict) -> tuple[list[dict], int]:
+        """Extract records list and total count from API response."""
+        total = 0
+        records: list = []
+
+        if "rsp" in data and isinstance(data["rsp"], dict):
+            rsp = data["rsp"]
+            total = int(rsp.get("_total", 0))
+            content = rsp.get("_content", [])
+            if isinstance(content, list):
+                records = content
+            elif isinstance(content, dict):
+                records = [content]
+        elif "data" in data:
+            inner = data["data"]
+            if isinstance(inner, dict):
+                total = int(inner.get("total", 0))
+                if "data" in inner:
+                    records = inner["data"] if isinstance(inner["data"], list) else []
+            elif isinstance(inner, list):
+                records = inner
+        elif "balancete_despesa_orcamentaria" in data:
+            records = data["balancete_despesa_orcamentaria"]
+
+        return records, total
+
+    async def _save_all(
+        self, all_records: list[dict], municipio_id: str, year: int
+    ) -> int:
+        """Save all records to database in one bulk insert."""
+        if not all_records:
             return 0
 
-        # Transform records for bulk insert
+        # Run CPU-bound processing in thread
+        records = await asyncio.to_thread(
+            self._process_records_sync, all_records, municipio_id, year
+        )
+
+        columns = [
+            "id",
+            "municipio_id",
+            "exercicio_orcamento",
+            "mes_referencia",
+            "codigo_orgao",
+            "codigo_unidade_orcamentaria",
+            "codigo_funcao",
+            "codigo_subfuncao",
+            "codigo_programa",
+            "codigo_elemento_despesa",
+            "valor_empenhado",
+            "valor_liquidado",
+            "valor_pago",
+            "raw_data",
+        ]
+
+        update_columns = [
+            "valor_empenhado",
+            "valor_liquidado",
+            "valor_pago",
+            "raw_data",
+        ]
+
+        # Run Blocking DB write (bulk_upsert handles to_thread internally)
+        return await self.bulk_upsert("despesas", columns, records, update_columns)
+
+    def _process_records_sync(
+        self, all_records: list[dict], municipio_id: str, year: int
+    ) -> list[tuple]:
+        """Sync helper to process records."""
         records = []
-        for i, item in enumerate(batch_data):
-            elem = item.get("codigo_elemento_despesa", "0")
-            val = item.get("valor_pago_no_mes", "0")
-            exp_id = f"{municipio_id}_{month_ref}_{elem}_{val}_{i}"
+        for item in all_records:
+            month_ref = item.get("data_referencia", f"{year}00")
+
+            # Use content hash for robustness
+            import hashlib
+
+            serialized = json.dumps(item, sort_keys=True, default=str)
+            content_hash = hashlib.sha256(serialized.encode()).hexdigest()
+            exp_id = f"{municipio_id}_{content_hash}_{year}"
 
             records.append(
                 (
@@ -131,22 +210,4 @@ class ExpensesCollector(BaseCollector):
                     json.dumps(item),
                 )
             )
-
-        columns = [
-            "id",
-            "municipio_id",
-            "exercicio_orcamento",
-            "mes_referencia",
-            "codigo_orgao",
-            "codigo_unidade_orcamentaria",
-            "codigo_funcao",
-            "codigo_subfuncao",
-            "codigo_programa",
-            "codigo_elemento_despesa",
-            "valor_empenhado",
-            "valor_liquidado",
-            "valor_pago",
-            "raw_data",
-        ]
-
-        return self.bulk_insert("despesas", columns, records)
+        return records

@@ -101,7 +101,7 @@ init-db:
 
 etl:
 	@echo "Running ETL process..."
-	@uv run python -m src.etl.main --municipality 162
+	@uv run python -m src.etl.main --municipality $(or $(municipality),162) $(if $(year),--year $(year),)
 	@echo "✅ ETL complete!"
 
 # ──────────────────────────────────────────────────────────

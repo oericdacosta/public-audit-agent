@@ -2,98 +2,70 @@
 ETL Main Orchestrator.
 
 Coordinates the collection of public audit data from TCE APIs using
-dynamic endpoint discovery.
+dynamic endpoint discovery and AsyncIO for high-performance I/O.
 """
 
 import argparse
+import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
-
-import duckdb
+from typing import Any
 
 from src.config import get_settings
-from src.etl.client import TCEClient
+from src.etl.client import AsyncTCEClient
 from src.etl.collectors.despesas import ExpensesCollector
-from src.etl.collectors.generic import GenericCollector
-from src.etl.collectors.licitacoes import TendersCollector
+from src.etl.collectors.extra_orcamentaria import (
+    DespesaExtraOrcamentariaCollector,
+    ReceitaExtraOrcamentariaCollector,
+)
+from src.etl.collectors.generic import (
+    NO_PARAMS_ENDPOINTS,
+    PAGINATED_ENDPOINTS,
+    GenericCollector,
+)
 from src.etl.collectors.receitas import RevenueCollector
+from src.etl.collectors.transacoes import TransacoesCollector
 from src.etl.db_manager import DatabaseManager
 from src.etl.endpoints import Endpoint
+from src.etl.metadata import ETLMetadataManager
 
-# Logging Configuration
-_log_dir = Path(__file__).parent.parent.parent / "logs"
-_log_dir.mkdir(parents=True, exist_ok=True)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(_log_dir / "etl.log"),
-        logging.StreamHandler(),
-    ],
-)
 logger = logging.getLogger(__name__)
 
 
-ENDPOINT_TO_TABLE: Dict[Endpoint, str] = {
-    Endpoint.DESPESAS: "despesas",
-    Endpoint.RECEITAS: "receitas",
-    Endpoint.LICITACOES: "licitacoes",
-    Endpoint.MUNICIPIOS: "municipios",
-    Endpoint.ORGAOS: "orgaos",
-    Endpoint.UNIDADES_ORCAMENTARIAS: "unidades_orcamentarias",
-    Endpoint.FUNCOES: "funcoes",
-    Endpoint.ORDENADORES: "ordenadores",
-    Endpoint.CONTAS_BANCARIAS: "contas_bancarias",
-}
+def setup_logging() -> None:
+    """Configure logging for ETL process."""
+    log_dir = Path(__file__).parent.parent.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler(log_dir / "etl.log"),
+            logging.StreamHandler(),
+        ],
+    )
 
 
-def get_sync_status(
-    db_manager: DatabaseManager, municipality_id: str, year: int, source: str
-) -> Optional[str]:
-    """Check if a specific year/source has been successfully ingested."""
-    try:
-        with db_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT status FROM etl_metadata
-                WHERE municipio_id = ? AND year = ? AND source = ?
-                """,
-                (municipality_id, year, source),
-            )
-            row = cursor.fetchone()
-            return row[0] if row else None
-    except (duckdb.Error, duckdb.CatalogException):
-        return None
+# Specialized collectors that need custom processing logic
+SPECIALIZED_ENDPOINTS: frozenset[Endpoint] = frozenset(
+    {
+        Endpoint.LICITACOES,
+        Endpoint.DESPESAS,
+        Endpoint.RECEITAS,
+        Endpoint.BALANCETE_DESPESA_EXTRA,
+        Endpoint.BALANCETE_RECEITA_EXTRA,
+        Endpoint.CONTRATOS,
+        Endpoint.CONTRATADOS,
+        Endpoint.ITENS_LICITACOES,
+        Endpoint.LICITANTES,
+    }
+)
 
 
-def update_sync_status(
-    db_manager: DatabaseManager,
-    municipality_id: str,
-    year: int,
-    source: str,
-    status: str,
-    count: int = 0,
-) -> None:
-    """Update the execution state in the database."""
-    with db_manager.get_connection() as conn:
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO etl_metadata
-            (municipio_id, year, source, status, record_count, last_updated)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            (municipality_id, year, source, status, count),
-        )
-        conn.commit()
-
-
-def process_task(
-    db_manager: DatabaseManager,
+async def process_task(
+    metadata_mgr: ETLMetadataManager,
     municipality_id: str,
     year: int,
     source_key: str,
@@ -103,30 +75,71 @@ def process_task(
     process_id = f"{source_key.upper()}:{year}"
 
     # Check Idempotency
-    current_status = get_sync_status(db_manager, municipality_id, year, source_key)
+    # Run sync DB check in thread
+    current_status = await asyncio.to_thread(
+        metadata_mgr.get_status, municipality_id, year, source_key
+    )
     if current_status == "COMPLETED":
         return f"⏭️  Skipped {process_id} (Already Completed)"
 
     # Start
-    update_sync_status(db_manager, municipality_id, year, source_key, "STARTED")
+    await asyncio.to_thread(
+        metadata_mgr.update_status, municipality_id, year, source_key, "STARTED"
+    )
     try:
         logger.info("🚀 Starting %s", process_id)
-        count = collector.run(municipality_id, year)
+        # Run async collector
+        count = await collector.run(municipality_id, year)
 
         # Success
-        update_sync_status(
-            db_manager, municipality_id, year, source_key, "COMPLETED", count
+        await asyncio.to_thread(
+            metadata_mgr.update_status,
+            municipality_id,
+            year,
+            source_key,
+            "COMPLETED",
+            count,
         )
         return f"✅ Finished {process_id} ({count} items)"
 
     except Exception as e:
         logger.error("Failed %s: %s", process_id, e)
-        update_sync_status(db_manager, municipality_id, year, source_key, "FAILED")
+        await asyncio.to_thread(
+            metadata_mgr.update_status, municipality_id, year, source_key, "FAILED"
+        )
         return f"⚠️ Failed {process_id}: {str(e)}"
 
 
-def run_etl(
-    municipality_id: Optional[str] = None, manual_year: Optional[str] = None
+def _create_specialized_collectors(
+    db_manager: DatabaseManager, client: AsyncTCEClient
+) -> dict[Endpoint, Any]:
+    return {
+        Endpoint.LICITACOES: TransacoesCollector(
+            db_manager, client, Endpoint.LICITACOES
+        ),
+        Endpoint.CONTRATOS: TransacoesCollector(db_manager, client, Endpoint.CONTRATOS),
+        Endpoint.CONTRATADOS: TransacoesCollector(
+            db_manager, client, Endpoint.CONTRATADOS
+        ),
+        Endpoint.ITENS_LICITACOES: TransacoesCollector(
+            db_manager, client, Endpoint.ITENS_LICITACOES
+        ),
+        Endpoint.LICITANTES: TransacoesCollector(
+            db_manager, client, Endpoint.LICITANTES
+        ),
+        Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
+        Endpoint.RECEITAS: RevenueCollector(db_manager, client),
+        Endpoint.BALANCETE_DESPESA_EXTRA: DespesaExtraOrcamentariaCollector(
+            db_manager, client
+        ),
+        Endpoint.BALANCETE_RECEITA_EXTRA: ReceitaExtraOrcamentariaCollector(
+            db_manager, client
+        ),
+    }
+
+
+async def run_etl(
+    municipality_id: str | None = None, manual_year: str | None = None
 ) -> None:
     """
     Run the ETL process for a municipality using dynamic endpoint discovery.
@@ -146,69 +159,130 @@ def run_etl(
     if manual_year:
         years = [int(manual_year)]
     else:
-        current_year = datetime.now().year
+        current_year = datetime.now().year - 1
         lookback = settings.get("audit", {}).get("data_retention_years", 5)
         years = list(range(current_year, current_year - lookback, -1))
 
-    logger.info("--- STARTING AUTOMATED BATCH ETL ---")
+    logger.info("--- STARTING AUTOMATED BATCH ETL (ASYNC) ---")
     logger.info("Municipality: %s", municipality_id)
     logger.info("Years Window: %s", years)
 
     db_manager = DatabaseManager()
     db_manager.initialize_schema()
-    client = TCEClient()
 
-    # Specialized Collectors (Strategy Pattern)
-    specialized_collectors: Dict[Endpoint, Any] = {
-        Endpoint.LICITACOES: TendersCollector(db_manager, client),
-        Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
-        Endpoint.RECEITAS: RevenueCollector(db_manager, client),
-    }
+    # Initialize Async Client
+    client = AsyncTCEClient()
 
-    tasks = []
+    metadata_mgr = ETLMetadataManager(db_manager)
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    try:
+        # Create specialized collectors
+        specialized_collectors = _create_specialized_collectors(db_manager, client)
+
+        # Build ordered task list: dimension tables first, then simple, then heavy
+        ordered_tasks: list[tuple[int, int, Endpoint]] = []
         for year in years:
             for endpoint in Endpoint:
-                # 1. Resolve Table Name
-                if endpoint not in ENDPOINT_TO_TABLE:
-                    logger.warning(
-                        f"Endpoint {endpoint.name} has no mapped table. Skipping."
-                    )
+                if not endpoint.table_name:
                     continue
-
-                table_name = ENDPOINT_TO_TABLE[endpoint]
-
-                # 2. Resolve Collector Strategy
-                if endpoint in specialized_collectors:
-                    collector = specialized_collectors[endpoint]
+                # Priority: 0 = no-param lookups, 1 = simple endpoints,
+                # 2 = specialized/paginated (heaviest)
+                if endpoint in NO_PARAMS_ENDPOINTS:
+                    priority = 0
+                elif (
+                    endpoint not in SPECIALIZED_ENDPOINTS
+                    and endpoint not in PAGINATED_ENDPOINTS
+                ):
+                    priority = 1
                 else:
-                    collector = GenericCollector(
-                        db_manager, client, endpoint, table_name
-                    )
+                    priority = 2
+                ordered_tasks.append((priority, year, endpoint))
 
-                tasks.append(
-                    executor.submit(
-                        process_task,
-                        db_manager,
-                        municipality_id,
-                        year,
-                        table_name,
-                        collector,
-                    )
+        ordered_tasks.sort(key=lambda t: (t[0], t[1]))
+
+        # Execute tasks
+        # We can execute all of them concurrently, honoring the semaphore in the client.
+        # Or we can batch them by priority if dependencies exist.
+        # Assuming no strict data dependencies between these tasks
+        # for now (independent tables).
+
+        tasks = []
+        for _priority, year, endpoint in ordered_tasks:
+            if endpoint in SPECIALIZED_ENDPOINTS:
+                collector = specialized_collectors[endpoint]
+            else:
+                collector = GenericCollector(db_manager, client, endpoint)
+
+            tasks.append(
+                process_task(
+                    metadata_mgr,
+                    municipality_id,
+                    year,
+                    endpoint.table_name,
+                    collector,
                 )
+            )
 
-        for future in as_completed(tasks):
-            result = future.result()
-            logger.info(result)
+        # Run all tasks concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    logger.info("Batch Collection Cycle Finished.")
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error("Task failed with exception: %s", result)
+            else:
+                logger.info(result)
+
+    finally:
+        await client.close()
 
 
 if __name__ == "__main__":
+    setup_logging()
     parser = argparse.ArgumentParser(description="CivicAudit Professional ETL")
     parser.add_argument("--municipality", help="Override municipality code (e.g. 162)")
     parser.add_argument("--year", help="Override Rolling Window with single year")
 
     args = parser.parse_args()
-    run_etl(args.municipality, args.year)
+
+    # Check config for defaults
+    settings = get_settings()
+    default_municipality = settings.get("audit", {}).get("city_code")
+    if not default_municipality:
+        raise ValueError("City code not found in config.yaml")
+
+    # Determine years to process
+    target_municipality = args.municipality or str(default_municipality)
+    target_year = args.year
+
+    years = []
+    if target_year:
+        years = [int(target_year)]
+    else:
+        lookback_years = settings.get("audit", {}).get("data_retention_years", 10)
+        current_date_year = datetime.now().year
+
+        # Start from the last full year (current_year - 1)
+        start_year = current_date_year - 1
+
+        years = list(range(start_year, start_year - lookback_years, -1))
+
+    logger.info("Years Window to Process: %s", years)
+
+    # --- SEQUENTIAL YEAR PROCESSING ---
+    # We process each year as a separate async event loop execution
+    # This mimics Airflow task behavior (one task per year) and avoids WAF blocks.
+    for year in years:
+        logger.info(f"=== Starting ETL for Year {year} ===")
+        try:
+            asyncio.run(run_etl(target_municipality, str(year)))
+            logger.info(f"✅ Year {year} completed successfully.")
+            # Optional: Add a small sleep between years to be extra safe
+            import time
+
+            time.sleep(2)
+        except Exception as e:
+            logger.error(f"❌ Year {year} failed: {e}")
+            # Continue to next year even if one fails
+            continue
+
+    logger.info("Batch Collection Cycle Finished.")

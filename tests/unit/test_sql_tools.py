@@ -5,6 +5,10 @@ Tests the security validations, query sanitization,
 and database tool functions.
 """
 
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 
 class TestSanitizeQuery:
     """Test suite for _sanitize_query function."""
@@ -118,6 +122,7 @@ class TestQuerySql:
 
     def test_executes_safe_query(self, patch_db):
         """Should execute valid SELECT queries."""
+        # patch_db is the database manager mock fixture
         from src.tools.sql import query_sql
 
         result = query_sql("SELECT * FROM despesas")
@@ -125,10 +130,23 @@ class TestQuerySql:
         assert len(result) == 2
 
 
+@pytest.fixture
+def patch_introspector():
+    """Patch the SchemaIntrospector lazy loader."""
+    mock_intro = MagicMock()
+    # Configure default behavior for all tests using this fixture
+    mock_intro.get_all_tables.return_value = ["despesas", "receitas"]
+    mock_intro.get_schema.return_value = {"despesas": "CREATE TABLE despesas..."}
+    mock_intro.search.return_value = {}  # Default empty search
+
+    with patch("src.tools.sql._get_introspector", return_value=mock_intro):
+        yield mock_intro
+
+
 class TestListTables:
     """Test suite for list_tables function."""
 
-    def test_returns_table_list(self, patch_db):
+    def test_returns_table_list(self, patch_introspector):
         """Should return list of table names."""
         from src.tools.sql import list_tables
 
@@ -140,17 +158,17 @@ class TestListTables:
 class TestDescribeTable:
     """Test suite for describe_table function."""
 
-    def test_returns_schema_for_existing_table(self, patch_db):
+    def test_returns_schema_for_existing_table(self, patch_introspector):
         """Should return DDL for existing table."""
         from src.tools.sql import describe_table
 
         result = describe_table("despesas")
         assert "CREATE TABLE" in result
 
-    def test_returns_error_for_missing_table(self, patch_db):
+    def test_returns_error_for_missing_table(self, patch_introspector):
         """Should return error message for non-existent table."""
         from src.tools.sql import describe_table
 
-        patch_db.get_start_schema.return_value = {}
+        patch_introspector.get_schema.return_value = {}
         result = describe_table("nonexistent")
         assert "not found" in result

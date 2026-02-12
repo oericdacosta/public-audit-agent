@@ -235,8 +235,6 @@ async def run_etl(
     finally:
         await client.close()
 
-    logger.info("Batch Collection Cycle Finished.")
-
 
 if __name__ == "__main__":
     setup_logging()

@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: stg_itens_licitacoes
+    description: "Itens de processos licitatórios com vencedores. Granularidade: um item por licitação por linha."
+    columns:
+      - name: item_licitacao_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: numero_licitacao
+        description: "Número do processo licitatório."
+      - name: data_realizacao_licitacao
+        description: "Data de realização da licitação."
+      - name: numero_sequencial_item
+        description: "Número sequencial do item."
+      - name: descricao_item
+        description: "Descrição do item licitado."
+      - name: valor_vencedor
+        description: "Valor total do item para o vencedor."
+      - name: quantidade
+        description: "Quantidade licitada."
+      - name: valor_unitario
+        description: "Valor unitário do item."
+      - name: nome_vencedor
+        description: "Nome do fornecedor vencedor."
+      - name: updated_at
+        description: "Timestamp da última carga."

@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: stg_ordenadores
+    description: "Ordenadores de despesa do município. Granularidade: um ordenador por linha."
+    columns:
+      - name: ordenador_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: codigo_ordenador
+        description: "Código do ordenador."
+      - name: nome_ordenador
+        description: "Nome do ordenador de despesa."
+      - name: ano_exercicio
+        description: "Ano de exercício orçamentário."
+      - name: updated_at
+        description: "Timestamp da última carga."

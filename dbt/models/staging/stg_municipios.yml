@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: stg_municipios
+    description: "Cadastro de municípios do Ceará (dimensão). Granularidade: um município por linha."
+    columns:
+      - name: municipio_id
+        description: "Chave primária (surrogate key do sistema)."
+        tests: [unique, not_null]
+      - name: codigo_municipio
+        description: "Código TCE do município."
+        tests: [not_null]
+      - name: nome_municipio
+        description: "Nome oficial do município."
+      - name: uf
+        description: "Unidade federativa (CE)."
+      - name: updated_at
+        description: "Timestamp da última carga."

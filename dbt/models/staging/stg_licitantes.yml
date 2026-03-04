@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: stg_licitantes
+    description: "Empresas e fornecedores participantes de licitações. Granularidade: um licitante por processo por linha."
+    columns:
+      - name: licitante_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: numero_licitacao
+        description: "Número do processo licitatório."
+      - name: data_realizacao_licitacao
+        description: "Data de realização da licitação."
+      - name: documento_negociante
+        description: "CPF ou CNPJ do licitante."
+      - name: nome_negociante
+        description: "Razão social ou nome do licitante."
+      - name: updated_at
+        description: "Timestamp da última carga."

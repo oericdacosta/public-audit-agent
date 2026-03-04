@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_despesas
+    description: "Despesas orçamentárias mensais por elemento de despesa. Granularidade: um registro por órgão/unidade/elemento/mês."
+    columns:
+      - name: despesa_id
+        description: "Chave primária (hash do conteúdo)."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: ano_exercicio
+        description: "Ano de exercício orçamentário."
+      - name: mes_referencia
+        description: "Mês de referência no formato YYYYMM."
+      - name: codigo_orgao
+        description: "Código do órgão."
+      - name: codigo_unidade_orcamentaria
+        description: "Código da unidade orçamentária."
+      - name: codigo_funcao
+        description: "Código da função orçamentária."
+      - name: codigo_subfuncao
+        description: "Código da subfunção orçamentária."
+      - name: codigo_programa
+        description: "Código do programa orçamentário."
+      - name: codigo_elemento_despesa
+        description: "Código do elemento de despesa."
+      - name: valor_empenhado
+        description: "Valor empenhado no mês em reais."
+      - name: valor_liquidado
+        description: "Valor liquidado no mês em reais."
+      - name: valor_pago
+        description: "Valor pago no mês em reais."
+      - name: data_carga
+        description: "Timestamp da última carga dos dados."

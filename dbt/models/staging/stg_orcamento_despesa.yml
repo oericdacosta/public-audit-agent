@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: stg_orcamento_despesa
+    description: "Orçamento de despesa por projeto e atividade (LOA). Granularidade: um projeto/atividade por linha."
+    columns:
+      - name: orcamento_despesa_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: codigo_projeto_atividade
+        description: "Código do projeto ou atividade."
+      - name: descricao_projeto_atividade
+        description: "Descrição do projeto ou atividade."
+      - name: ano_exercicio
+        description: "Ano de exercício orçamentário."
+      - name: updated_at
+        description: "Timestamp da última carga."

@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: stg_receitas
+    description: "Receitas orçamentárias mensais por rubrica. Granularidade: um registro por órgão/rubrica/mês."
+    columns:
+      - name: receita_id
+        description: "Chave primária (hash do conteúdo)."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: ano_exercicio
+        description: "Ano de exercício orçamentário."
+      - name: mes_referencia
+        description: "Mês de referência no formato YYYYMM."
+      - name: codigo_orgao
+        description: "Código do órgão."
+      - name: codigo_unidade_orcamentaria
+        description: "Código da unidade orçamentária."
+      - name: codigo_receita
+        description: "Código da rubrica de receita."
+      - name: descricao_receita
+        description: "Descrição da rubrica."
+      - name: valor_orcado
+        description: "Valor orçado para o mês em reais."
+      - name: valor_arrecadado
+        description: "Valor efetivamente arrecadado em reais."
+      - name: data_carga
+        description: "Timestamp da última carga dos dados."

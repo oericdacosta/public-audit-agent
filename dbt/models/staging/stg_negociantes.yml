@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: stg_negociantes
+    description: "Cadastro de fornecedores e negociantes. Granularidade: um negociante por linha."
+    columns:
+      - name: negociante_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: numero_documento_negociante
+        description: "CPF ou CNPJ."
+      - name: nome_negociante
+        description: "Razão social ou nome."
+      - name: endereco_negociante
+        description: "Endereço completo."
+      - name: telefone_negociante
+        description: "Telefone de contato."
+      - name: cep_negociante
+        description: "CEP do endereço."
+      - name: nome_municipio_negociante
+        description: "Município do negociante."
+      - name: uf_negociante
+        description: "UF do negociante."
+      - name: updated_at
+        description: "Timestamp da última carga."

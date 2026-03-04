@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: stg_contratados
+    description: "Fornecedores contratados pelo município. Granularidade: um contratado por contrato por linha."
+    columns:
+      - name: contratado_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: numero_contrato
+        description: "Número do contrato."
+      - name: data_contrato
+        description: "Data de assinatura do contrato."
+      - name: documento_negociante
+        description: "CPF ou CNPJ do contratado."
+      - name: nome_negociante
+        description: "Razão social ou nome do contratado."
+      - name: updated_at
+        description: "Timestamp da última carga."

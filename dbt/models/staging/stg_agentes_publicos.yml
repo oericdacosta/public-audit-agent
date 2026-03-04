@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_agentes_publicos
+    description: "Servidores públicos municipais. Granularidade: um servidor por linha."
+    columns:
+      - name: agente_id
+        description: "Chave primária do servidor (hash do conteúdo)."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: cpf_servidor
+        description: "CPF mascarado do servidor (LGPD)."
+      - name: nome_servidor
+        description: "Nome completo do servidor."
+      - name: numero_matricula
+        description: "Matrícula funcional."
+      - name: cargo
+        description: "Cargo ocupado."
+      - name: tipo_cargo
+        description: "Tipo do cargo."
+      - name: situacao_funcional
+        description: "Situação funcional atual."
+      - name: codigo_vinculo
+        description: "Código do vínculo empregatício."
+      - name: codigo_ingresso
+        description: "Código da forma de ingresso."
+      - name: valor_carga_horaria
+        description: "Carga horária semanal em horas."
+      - name: ano_exercicio
+        description: "Ano de exercício orçamentário."
+      - name: updated_at
+        description: "Timestamp da última carga dos dados."

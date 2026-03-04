@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_funcoes
+    description: "Tabela de funções orçamentárias (dimensão). Granularidade: uma função por linha."
+    columns:
+      - name: funcao_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: codigo_funcao
+        description: "Código numérico da função."
+        tests: [not_null]
+      - name: descricao_funcao
+        description: "Nome da função orçamentária."
+      - name: updated_at
+        description: "Timestamp da última carga."

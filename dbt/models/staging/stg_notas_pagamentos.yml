@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: stg_notas_pagamentos
+    description: "Notas de pagamento realizadas pelo município. Granularidade: uma nota por linha."
+    columns:
+      - name: nota_pagamento_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: numero_nota_pagamento
+        description: "Número da nota de pagamento."
+      - name: data_nota_pagamento
+        description: "Data do pagamento."
+      - name: valor_nota_pagamento
+        description: "Valor pago em reais."
+      - name: nome_pagador
+        description: "Nome do responsável pelo pagamento."
+      - name: ano_exercicio
+        description: "Ano de exercício orçamentário."
+      - name: updated_at
+        description: "Timestamp da última carga."

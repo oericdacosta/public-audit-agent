@@ -1,0 +1,137 @@
+version: 2
+
+sources:
+  - name: tce_ce
+    description: "Dados brutos coletados da API pública do TCE-CE e armazenados no DuckDB local."
+    schema: main
+    tables:
+      - name: agentes_publicos
+        description: "Servidores públicos municipais com dados funcionais."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: balancete_despesa_extra
+        description: "Balancete de despesas extra-orçamentárias mensais."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: balancete_receita_extra
+        description: "Balancete de receitas extra-orçamentárias mensais."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: contas_bancarias
+        description: "Contas bancárias do município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: contratados
+        description: "Fornecedores contratados pelo município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: contratos
+        description: "Contratos celebrados pelo município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: despesas
+        description: "Despesas orçamentárias mensais do município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: funcoes
+        description: "Tabela de funções orçamentárias (dimensão)."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: itens_licitacoes
+        description: "Itens de cada processo licitatório."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: itens_notas_fiscais
+        description: "Itens individuais das notas fiscais."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: licitacoes
+        description: "Processos licitatórios do município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: licitantes
+        description: "Empresas participantes dos processos licitatórios."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: liquidacoes
+        description: "Liquidações de empenhos."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: municipios
+        description: "Cadastro de municípios do Ceará."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: negociantes
+        description: "Cadastro de fornecedores e negociantes."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: notas_fiscais
+        description: "Notas fiscais emitidas para o município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: notas_pagamentos
+        description: "Notas de pagamento realizadas pelo município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: orcamento_despesa
+        description: "Orçamento de despesa por projeto/atividade."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: orcamento_receita
+        description: "Orçamento de receita por rubrica."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: ordenadores
+        description: "Ordenadores de despesa do município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: orgaos
+        description: "Órgãos da administração municipal (dimensão)."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: programas
+        description: "Programas orçamentários municipais (dimensão)."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: receitas
+        description: "Receitas orçamentárias mensais do município."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: taloes_extras
+        description: "Talões de receita extra-orçamentária."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: taloes_receitas
+        description: "Talões de receita orçamentária."
+        columns:
+          - name: id
+            tests: [unique, not_null]
+      - name: unidades_orcamentarias
+        description: "Unidades orçamentárias do município (dimensão)."
+        columns:
+          - name: id
+            tests: [unique, not_null]

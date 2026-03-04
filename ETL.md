@@ -18,33 +18,27 @@ A arquitetura do ETL foi projetada para ser modular, resiliente e eficiente. Aba
 
 ```mermaid
 graph TD
-    classDef collector fill:#e1f5fe,stroke:#01579b
-    classDef main fill:#fff9c4,stroke:#fbc02d
-    classDef core fill:#e8f5e9,stroke:#2e7d32
-    classDef util fill:#f3e5f5,stroke:#7b1fa2
-    classDef db fill:#ffebee,stroke:#c62828
+    Main("main.py - Orquestrador")
+    Client("AsyncTCEClient - client.py")
+    DB("DatabaseManager - db_manager.py")
 
-    Main(main.py - Orquestrador):::main
-    Client(AsyncTCEClient - client.py):::core
-    DB(DatabaseManager - db_manager.py):::core
-
-    subgraph Collectors [Coletores - src/etl/collectors/]
+    subgraph Collectors ["Coletores - src/etl/collectors/"]
         direction TB
-        Exp(despesas.py):::collector
-        Rev(receitas.py):::collector
-        Extra(extra_orcamentaria.py):::collector
-        Trans(transacoes.py):::collector
-        Gen(generic.py):::collector
-        Base(base.py):::collector
+        Exp("despesas.py")
+        Rev("receitas.py")
+        Extra("extra_orcamentaria.py")
+        Trans("transacoes.py")
+        Gen("generic.py")
+        Base("base.py")
     end
 
-    Endpoints(endpoints.py):::util
-    Metadata(metadata.py):::util
-    Masking(utils/masking.py):::util
+    Endpoints("endpoints.py")
+    Metadata("metadata.py")
+    Masking("utils/masking.py")
 
-    subgraph Schema [Schema - src/etl/schema/]
-        Tables(tables.sql):::db
-        Intro(introspection.py):::db
+    subgraph Schema ["Schema - src/etl/schema/"]
+        Tables("tables.sql")
+        Intro("introspection.py")
     end
 
     Main -->|Cria/Usa| Client
@@ -139,29 +133,29 @@ Este módulo contém a classe **`AsyncTCEClient`**, responsável por toda a comu
 
 ```mermaid
 flowchart TD
-    Start([fetch endpoint, params]) --> Build[build_url endpoint]
-    Build --> FetchJSON[fetch_json url, params]
+    Start(["fetch endpoint, params"]) --> Build["build_url endpoint"]
+    Build --> FetchJSON["fetch_json url, params"]
 
-    subgraph RetryLoop [Loop de Tentativas 1...N]
+    subgraph RetryLoop ["Loop de Tentativas 1...N"]
         direction TB
-        CallCB[AsyncCircuitBreaker.call]
-        CheckOpen{Estado OPEN?}
+        CallCB["AsyncCircuitBreaker.call"]
+        CheckOpen{"Estado OPEN?"}
 
         CallCB --> CheckOpen
-        CheckOpen -- Sim --> Error[Erro: CircuitBreakerError]
-        Error --> ReturnNone([Retorna None])
+        CheckOpen -- Sim --> Error["Erro: CircuitBreakerError"]
+        Error --> ReturnNone(["Retorna None"])
 
-        CheckOpen -- Não --> MakeReq[_make_request]
-        MakeReq --> Sem[semaphore.acquire]
-        Sem --> Session[session.get url, params]
+        CheckOpen -- Não --> MakeReq["_make_request"]
+        MakeReq --> Sem["semaphore.acquire"]
+        Sem --> Session["session.get url, params"]
 
-        Session -- 404 --> RetEmpty([Retorna {}])
-        Session -- Sucesso 200 --> RetJSON([Retorna JSON])
-        Session -- Erro 5xx/Timeout --> Backoff[Aguardar Backoff]
+        Session -- 404 --> RetEmpty(["Retorna {}"])
+        Session -- Sucesso 200 --> RetJSON(["Retorna JSON"])
+        Session -- Erro 5xx/Timeout --> Backoff["Aguardar Backoff"]
         Backoff --> CallCB
     end
 
-    RetJSON --> End([Fim])
+    RetJSON --> End(["Fim"])
     RetEmpty --> End
 ```
 

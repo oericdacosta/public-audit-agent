@@ -19,6 +19,45 @@ from src.etl.endpoints import APIBase, Endpoint
 logger = logging.getLogger(__name__)
 
 
+class TokenBucketRateLimiter:
+    """
+    Token bucket rate limiter.
+
+    Enforces a hard ceiling on requests per second, independent of
+    response time. Unlike a Semaphore (which limits concurrency),
+    this guarantees the actual rate never exceeds `rate` req/s even
+    when responses arrive quickly.
+    """
+
+    def __init__(self, rate: float) -> None:
+        """
+        Args:
+            rate: Maximum requests per second.
+        """
+        self._rate = rate
+        self._tokens = rate  # start with a full bucket
+        self._last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        """Block until a token is available, then consume it."""
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                elapsed = now - self._last_refill
+                self._tokens = min(self._rate, self._tokens + elapsed * self._rate)
+                self._last_refill = now
+
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    return
+
+                wait_time = (1.0 - self._tokens) / self._rate
+
+            # Sleep outside the lock so other coroutines can check
+            await asyncio.sleep(wait_time)
+
+
 class AsyncCircuitBreaker:
     """Simple Async Circuit Breaker."""
 
@@ -28,28 +67,32 @@ class AsyncCircuitBreaker:
         self.failure_count = 0
         self.state = "closed"  # closed, open, half-open
         self.last_failure_time = 0
+        self._lock = asyncio.Lock()
 
     async def call(
         self, func: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
     ) -> Any:
         """Execute async function with circuit breaker logic."""
-        if self.state == "open":
-            if time.time() - self.last_failure_time > self.reset_timeout:
-                self.state = "half-open"
-            else:
-                raise pybreaker.CircuitBreakerError("Circuit is open")
+        async with self._lock:
+            if self.state == "open":
+                if time.time() - self.last_failure_time > self.reset_timeout:
+                    self.state = "half-open"
+                else:
+                    raise pybreaker.CircuitBreakerError("Circuit is open")
 
         try:
             result = await func(*args, **kwargs)
-            if self.state == "half-open":
-                self.state = "closed"
-                self.failure_count = 0
+            async with self._lock:
+                if self.state == "half-open":
+                    self.state = "closed"
+                    self.failure_count = 0
             return result
         except Exception:
-            self.failure_count += 1
-            self.last_failure_time = int(time.time())
-            if self.failure_count >= self.fail_max:
-                self.state = "open"
+            async with self._lock:
+                self.failure_count += 1
+                self.last_failure_time = int(time.time())
+                if self.failure_count >= self.fail_max:
+                    self.state = "open"
             raise
 
 
@@ -87,8 +130,17 @@ class AsyncTCEClient:
         config_limit = tce_config["rate_limit"]
         final_limit = rate_limit if rate_limit is not None else config_limit
 
-        self.semaphore = asyncio.Semaphore(final_limit)
-        logger.debug(f"AsyncTCEClient initialized with rate_limit={final_limit}")
+        self._rate_limit = final_limit
+        # Token bucket enforces a hard req/s ceiling (true rate limiter).
+        # Semaphore is set to 3× the rate to allow deep pipelining: requests
+        # in-flight while others wait on the token bucket.
+        self._rate_limiter = TokenBucketRateLimiter(rate=float(final_limit))
+        self.semaphore = asyncio.Semaphore(final_limit * 3)
+        logger.debug(
+            "AsyncTCEClient initialized with rate_limit=%d req/s, semaphore=%d",
+            final_limit,
+            final_limit * 3,
+        )
 
         # Session state
         self._session: Optional[aiohttp.ClientSession] = None
@@ -105,9 +157,9 @@ class AsyncTCEClient:
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create the shared aiohttp session."""
         if self._session is None or self._session.closed:
-            # No limit on pool size (governed by semaphore)
+            # Pool size matches semaphore to reuse connections efficiently
             # ttl_dns_cache=300 to reduce DNS lookups
-            connector = aiohttp.TCPConnector(limit=0, ttl_dns_cache=300)
+            connector = aiohttp.TCPConnector(limit=self._rate_limit, ttl_dns_cache=300)
             timeout = aiohttp.ClientTimeout(total=60, sock_connect=10)
 
             self._session = aiohttp.ClientSession(
@@ -133,7 +185,9 @@ class AsyncTCEClient:
     async def _make_request(
         self, session: aiohttp.ClientSession, url: str, params: dict[str, Any]
     ) -> dict[str, Any]:
-        """Execute request with semaphore and error handling."""
+        """Execute request with rate limiting, semaphore, and error handling."""
+        # Rate limiter first (controls req/s), then semaphore (caps concurrency).
+        await self._rate_limiter.acquire()
         async with self.semaphore:
             async with session.get(url, params=params) as response:
                 if response.status == 404:

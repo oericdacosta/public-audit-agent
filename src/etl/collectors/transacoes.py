@@ -7,6 +7,7 @@ from the TCE API. Uses parallel month fetching + parallel pagination.
 
 import asyncio
 import calendar
+import hashlib
 import json
 import logging
 from typing import Any, cast
@@ -138,6 +139,7 @@ class TransacoesCollector(MonthlyCollector):
     ) -> list[dict]:
         """Fetch all pages for a given month/date range with parallel pagination."""
         supports_pagination = self.endpoint not in self.NO_PAGINATION_ENDPOINTS
+        # TCE API rejects page_size > 100 for transactional endpoints
         page_size = 100
         all_records = []
 
@@ -183,7 +185,7 @@ class TransacoesCollector(MonthlyCollector):
             # Fetch all concurrently
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            for offset, result in zip(offsets, results, strict=False):
+            for offset, result in zip(offsets, results, strict=True):
                 if isinstance(result, Exception):
                     logger.warning("API error at offset %d: %s", offset, result)
                 elif isinstance(result, list):
@@ -245,10 +247,6 @@ class TransacoesCollector(MonthlyCollector):
         augmented_records = []
         for item in all_records:
             item_copy = item.copy()
-
-            # ID GENERATION
-            # ID GENERATION: Use content hash for robustness
-            import hashlib
 
             serialized = json.dumps(item, sort_keys=True, default=str)
             content_hash = hashlib.sha256(serialized.encode()).hexdigest()

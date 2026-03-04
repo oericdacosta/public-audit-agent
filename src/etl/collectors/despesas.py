@@ -6,6 +6,7 @@ Uses MonthlyCollector base class for shared monthly iteration logic.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 
@@ -81,7 +82,7 @@ class ExpensesCollector(MonthlyCollector):
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for offset, result in zip(offsets, results, strict=False):
+        for offset, result in zip(offsets, results, strict=True):
             if isinstance(result, Exception):
                 logger.warning("API error at offset %d: %s", offset, result)
             elif isinstance(result, list):
@@ -184,10 +185,6 @@ class ExpensesCollector(MonthlyCollector):
         records = []
         for item in all_records:
             month_ref = item.get("data_referencia", f"{year}00")
-
-            # Use content hash for robustness
-            import hashlib
-
             serialized = json.dumps(item, sort_keys=True, default=str)
             content_hash = hashlib.sha256(serialized.encode()).hexdigest()
             exp_id = f"{municipio_id}_{content_hash}_{year}"

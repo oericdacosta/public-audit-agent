@@ -2,14 +2,12 @@
 Base Collector.
 
 Abstract base class for ETL data collectors.
-Uses Parquet for ultra-fast DuckDB inserts with UPSERT support.
+Uses DuckDB's in-memory DataFrame registration for fast UPSERT support.
 """
 
 import asyncio
 import logging
-import tempfile
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
 import pandas as pd
@@ -54,8 +52,8 @@ class BaseCollector(ABC):
     """
     Abstract base class for data collectors.
 
-    Uses Parquet files for ultra-fast bulk inserts with UPSERT support
-    for incremental extraction.
+    Uses DuckDB's in-memory DataFrame registration for bulk inserts
+    with UPSERT support for incremental extraction.
     """
 
     def __init__(
@@ -95,7 +93,7 @@ class BaseCollector(ABC):
         update_columns: list[str] | None = None,
     ) -> int:
         """
-        Insert records using Parquet with UPSERT (ON CONFLICT DO UPDATE).
+        Insert records using in-memory DataFrame with UPSERT (ON CONFLICT DO UPDATE).
         Executes in a thread pool to avoid blocking the event loop.
         """
         if not records:
@@ -114,41 +112,30 @@ class BaseCollector(ABC):
         update_columns: list[str] | None = None,
     ) -> int:
         """Synchronous implementation of bulk_upsert."""
-        # Convert tuples to DataFrame
         df = pd.DataFrame(records, columns=columns)
 
-        # Create temp Parquet file
-        with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as f:
-            parquet_path = f.name
+        if update_columns is None:
+            update_columns = [c for c in columns if c != "id"]
 
-        try:
-            df.to_parquet(parquet_path, index=False)
+        update_set = ", ".join([f"{col} = EXCLUDED.{col}" for col in update_columns])
+        cols = ", ".join(columns)
 
-            # Build UPSERT SQL
-            if update_columns is None:
-                # Update all columns except 'id'
-                update_columns = [c for c in columns if c != "id"]
+        sql = (
+            f"INSERT INTO {table} ({cols}) "
+            f"SELECT {cols} FROM _bulk_df "
+            f"ON CONFLICT (id) DO UPDATE SET {update_set}"
+        )
 
-            update_set = ", ".join(
-                [f"{col} = EXCLUDED.{col}" for col in update_columns]
-            )
-
-            sql = f"""
-                INSERT INTO {table} ({", ".join(columns)})
-                SELECT {", ".join(columns)} FROM read_parquet('{parquet_path}')
-                ON CONFLICT (id) DO UPDATE SET {update_set}
-            """
-
-            with self.db_manager.get_connection() as conn:
+        with self.db_manager.get_connection() as conn:
+            conn.register("_bulk_df", df)
+            try:
                 conn.execute(sql)
                 conn.commit()
+            finally:
+                conn.unregister("_bulk_df")
 
-            logger.debug("Upserted %d records into %s via Parquet", len(records), table)
-            return len(records)
-
-        finally:
-            # Cleanup temp file
-            Path(parquet_path).unlink(missing_ok=True)
+        logger.debug("Upserted %d records into %s", len(records), table)
+        return len(records)
 
     async def bulk_insert(
         self, table: str, columns: list[str], records: list[tuple]
@@ -208,51 +195,28 @@ class MonthlyCollector(BaseCollector):
         """
         Run the collection for a municipality and year.
 
-        Fetches all 12 months concurrently.
+        Fetches all 12 months concurrently and saves each month's records
+        as soon as it completes, overlapping DB writes with ongoing fetches.
         """
         logger.info(">>> Starting %s - Async Concurrent Mode", self.collector_name)
 
-        all_records = await self._fetch_all_months_concurrent(municipio_id, year)
-
-        if not all_records:
-            logger.info("%s: No records found.", self.collector_name)
-            return 0
-
-        total = await self._save_all(all_records, municipio_id, year)
-        logger.info("%s completed: %d records.", self.collector_name, total)
-        return total
-
-    async def _fetch_all_months_concurrent(
-        self, municipio_id: str, year: int
-    ) -> list[dict]:
-        """
-        Fetch all 12 months concurrently using asyncio.gather.
-        """
-        all_records: list[dict] = []
-
         tasks = [self._fetch_month(municipio_id, year, month) for month in range(1, 13)]
+        total = 0
 
-        # Run all months in parallel
-        # return_exceptions=True so one failure doesn't crash everything immediately
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for coro in asyncio.as_completed(tasks):
+            try:
+                month_records = await coro
+            except Exception as e:
+                logger.error("%s:%d a month failed: %s", self.collector_name, year, e)
+                continue
 
-        for month_idx, result in enumerate(results):
-            month = month_idx + 1
-            if isinstance(result, Exception):
-                logger.error(
-                    "%s:%d month %d failed: %s",
-                    self.collector_name,
-                    year,
-                    month,
-                    result,
-                )
-            elif isinstance(result, list):
-                all_records.extend(result)
-            elif result is None:
-                pass  # Handle None return if applicable
-        logger.info(
-            "%s fetched total %d records (all months merged)",
-            self.collector_name,
-            len(all_records),
-        )
-        return all_records
+            if month_records:
+                saved = await self._save_all(month_records, municipio_id, year)
+                total += saved
+
+        if total == 0:
+            logger.info("%s: No records found.", self.collector_name)
+        else:
+            logger.info("%s completed: %d records.", self.collector_name, total)
+
+        return total

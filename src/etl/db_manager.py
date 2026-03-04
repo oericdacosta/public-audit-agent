@@ -119,15 +119,6 @@ class DatabaseManager:
         with self._conn_lock:
             yield self._conn
 
-    def get_raw_connection(self) -> DuckDBPyConnection:
-        """
-        Get a raw database connection (caller manages lifecycle).
-
-        Returns:
-            DuckDB connection (must be closed by caller).
-        """
-        return duckdb.connect(self.db_path)
-
     def close(self) -> None:
         """Close the persistent connection."""
         with self._conn_lock:

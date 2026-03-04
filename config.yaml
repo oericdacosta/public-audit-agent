@@ -34,6 +34,14 @@ database:
   path: "data/civic_audit.duckdb"
   query_timeout: 30  # Query timeout in seconds
 
+# Airflow Orchestration
+airflow:
+  schedule: "0 3 * * *"          # Cron: diário às 3h
+  max_active_runs: 1             # Sem execuções paralelas
+  sequential_years: true         # Processar anos sequencialmente
+  year_delay_seconds: 2          # Delay entre anos (anti-WAF)
+  pool_slots: 1                  # Slots do pool ETL (DuckDB single-writer)
+
 # Sandbox Configuration
 sandbox:
   image: "python:3.12-slim"

@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: stg_licitacoes
+    description: "Processos licitatórios do município. Granularidade: um processo por linha."
+    columns:
+      - name: licitacao_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: numero_licitacao
+        description: "Número identificador do processo."
+      - name: numero_processo
+        description: "Número do processo administrativo."
+      - name: objeto_licitacao
+        description: "Descrição do objeto licitado."
+      - name: modalidade_licitacao
+        description: "Código da modalidade (ex: Pregão, Concorrência)."
+      - name: data_realizacao
+        description: "Data de realização da licitação."
+      - name: valor_estimado
+        description: "Valor estimado da licitação em reais."
+      - name: situacao_licitacao
+        description: "Situação atual do processo."
+      - name: ano_exercicio
+        description: "Ano de exercício orçamentário."
+      - name: data_carga
+        description: "Timestamp da última carga dos dados."

@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: stg_notas_fiscais
+    description: "Notas fiscais emitidas para o município. Granularidade: uma nota por linha."
+    columns:
+      - name: nota_fiscal_id
+        description: "Chave primária."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Código do município."
+        tests: [not_null]
+      - name: numero_nota_fiscal
+        description: "Número da nota fiscal."
+      - name: data_emissao
+        description: "Data de emissão da nota."
+      - name: valor_liquido
+        description: "Valor líquido em reais."
+      - name: valor_bruto
+        description: "Valor bruto em reais."
+      - name: tipo_nota_fiscal
+        description: "Tipo da nota fiscal."
+      - name: cpf_cnpj_credor
+        description: "CPF ou CNPJ do credor."
+      - name: ano_exercicio
+        description: "Ano de exercício orçamentário."
+      - name: updated_at
+        description: "Timestamp da última carga."

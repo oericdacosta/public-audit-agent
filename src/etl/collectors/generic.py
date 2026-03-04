@@ -6,6 +6,8 @@ Uses Endpoint properties for deterministic data extraction.
 """
 
 import asyncio
+import hashlib
+import json
 import logging
 from typing import Any
 
@@ -142,6 +144,10 @@ class GenericCollector:
 
         data = await self.client.fetch(self.endpoint, params)
         if not data:
+            logger.warning(
+                "%s: no data returned for first page (API failure or empty endpoint)",
+                self.endpoint.name,
+            )
             return [], 0
 
         total = 0
@@ -169,6 +175,11 @@ class GenericCollector:
 
         data = await self.client.fetch(self.endpoint, params)
         if not data:
+            logger.warning(
+                "%s: no data returned at offset %d (API failure or empty page)",
+                self.endpoint.name,
+                offset,
+            )
             return []
         return self._extract_records(data)
 
@@ -176,8 +187,6 @@ class GenericCollector:
         self, records: list[dict], municipality_id: str, year: int
     ) -> list[dict]:
         """Augment raw records with standard fields, IDs, and masking."""
-        import json
-
         augmented = []
         for item in records:
             item_copy = item.copy()
@@ -191,42 +200,54 @@ class GenericCollector:
 
     async def _run_paginated(self, municipality_id: str, year: int) -> int:
         """
-        Run collection with robust pagination and bulk save.
+        Run collection with parallel pagination and bulk save.
 
-        Uses a sequential loop to guarantee data completeness, as async
+        Fetches the first page to discover the total, then fetches all
+        remaining pages concurrently. Falls back to sequential when total
+        is unknown (API does not return a count).
         """
         page_size = 500
-        all_records = []
-        offset = 0
+        first_records, total = await self._fetch_first_page(
+            municipality_id, year, page_size
+        )
 
-        # Loop until no more records are returned
-        while True:
-            # Fetch page
-            page_records = await self._fetch_page(
-                municipality_id, year, offset, page_size
-            )
+        if not first_records:
+            return 0
 
-            if not page_records:
-                break
+        all_records = list(first_records)
 
-            count = len(page_records)
-            all_records.extend(page_records)
+        if total > page_size:
+            # Known total: fetch remaining pages in parallel
+            offsets = list(range(page_size, total, page_size))
+            tasks = [
+                self._fetch_page(municipality_id, year, offset, page_size)
+                for offset in offsets
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for offset, result in zip(offsets, results, strict=True):
+                if isinstance(result, Exception):
+                    logger.warning(
+                        "%s: API error at offset %d: %s",
+                        self.endpoint.name,
+                        offset,
+                        result,
+                    )
+                elif isinstance(result, list):
+                    all_records.extend(result)
 
-            logger.debug(
-                "%s: fetched page size=%d offset=%d total_so_far=%d",
-                self.endpoint.name,
-                count,
-                offset,
-                len(all_records),
-            )
-
-            # Accessing next page
-            offset += page_size
-
-            # If no records returned, loop breaks at start of next iteration
-            # or we can check here to avoid one extra request
-            if not page_records:
-                break
+        elif len(first_records) == page_size:
+            # Unknown total but full first page: sequential fallback
+            offset = page_size
+            while True:
+                page_records = await self._fetch_page(
+                    municipality_id, year, offset, page_size
+                )
+                if not page_records:
+                    break
+                all_records.extend(page_records)
+                if len(page_records) < page_size:
+                    break
+                offset += page_size
 
         logger.info(
             "%s: fetched %d records total. Saving...",
@@ -234,10 +255,6 @@ class GenericCollector:
             len(all_records),
         )
 
-        if not all_records:
-            return 0
-
-        # Save all at once (Bulk Insert) to minimize DB lock contention
         augmented = await asyncio.to_thread(
             self._augment_records, all_records, municipality_id, year
         )
@@ -249,13 +266,7 @@ class GenericCollector:
 
     def _get_id_field(self, record: dict) -> str:
         """Generate a unique identifier based on record content hash."""
-        import hashlib
-        import json
-
-        # Use valid primitives for JSON serialization to ensure deterministic hash
-        # We sort keys to ensure consistent ordering
         serialized = json.dumps(record, sort_keys=True, default=str)
-
         return hashlib.sha256(serialized.encode()).hexdigest()
 
     async def run(self, municipality_id: str, year: int) -> int:
@@ -277,6 +288,10 @@ class GenericCollector:
         data = await self.client.fetch(self.endpoint, params)
 
         if not data:
+            logger.warning(
+                "%s: no data returned (API failure or empty endpoint)",
+                self.endpoint.name,
+            )
             return 0
 
         records = self._extract_records(data)

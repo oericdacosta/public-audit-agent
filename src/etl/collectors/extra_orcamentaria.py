@@ -6,6 +6,7 @@ Uses MonthlyCollector base class for shared monthly iteration logic.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 
@@ -92,9 +93,6 @@ class DespesaExtraOrcamentariaCollector(MonthlyCollector):
         records = []
         for item in all_records:
             month_ref = item.get("data_referencia", f"{year}00")
-            # Use content hash for robustness
-            import hashlib
-
             serialized = json.dumps(item, sort_keys=True, default=str)
             content_hash = hashlib.sha256(serialized.encode()).hexdigest()
             rec_id = f"{municipio_id}_{content_hash}_{year}"
@@ -255,9 +253,6 @@ class ReceitaExtraOrcamentariaCollector(MonthlyCollector):
         records = []
         for item in all_records:
             month_ref = item.get("data_referencia", f"{year}00")
-            # Use content hash for robustness
-            import hashlib
-
             serialized = json.dumps(item, sort_keys=True, default=str)
             content_hash = hashlib.sha256(serialized.encode()).hexdigest()
             rec_id = f"{municipio_id}_{content_hash}_{year}"

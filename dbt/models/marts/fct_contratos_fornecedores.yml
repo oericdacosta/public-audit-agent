@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: fct_contratos_fornecedores
+    description: >
+      Fato de contratos enriquecido com o perfil histórico completo do fornecedor
+      contratado. Seletor fino sobre int_contratos_fornecedores.
+      Elimina a necessidade de JOIN entre fct_contratos e dim_fornecedores.
+      Tabela principal para análise de concentração de fornecedores e flags de risco.
+      Granularidade: uma linha por contrato_id.
+    columns:
+      - name: contrato_id
+        description: "Chave primária do contrato."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: valor_contrato
+        description: "Valor total do contrato em R$."
+      - name: nome_fornecedor
+        description: "Nome do fornecedor/contratado."
+      - name: tipo_pessoa
+        description: "'Pessoa Jurídica', 'Pessoa Física' ou 'Não identificado'."
+      - name: porte_fornecedor
+        description: "Porte baseado em volume total acumulado: Grande, Médio ou Pequeno."
+      - name: fornecedor_total_contratos
+        description: "Total histórico de contratos deste fornecedor em todos os municípios."
+      - name: fornecedor_contratos_ativos
+        description: "Número de contratos ativos do fornecedor hoje."
+      - name: fornecedor_valor_total_acumulado
+        description: "Soma de todos os contratos do fornecedor em R$."
+      - name: fornecedor_maior_contrato
+        description: "Valor do maior contrato individual já celebrado pelo fornecedor."
+      - name: fornecedor_municipios
+        description: "Quantidade de municípios distintos onde o fornecedor contratou."
+      - name: fornecedor_licitacoes_participadas
+        description: "Quantidade de licitações em que o fornecedor participou."
+      - name: flag_contratado_sem_licitacao
+        description: "Verdadeiro quando o fornecedor nunca participou de nenhuma licitação."
+      - name: flag_fornecedor_recorrente_alto_valor
+        description: "Verdadeiro quando o fornecedor tem 5+ contratos e este é de alto valor."

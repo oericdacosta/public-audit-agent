@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: agg_despesas_por_funcao_ano
+    description: >
+      Agregação anual de despesas por função orçamentária (Saúde, Educação,
+      Administração etc.). Tabela de referência para análise de políticas públicas
+      e prioridades orçamentárias. Inclui ranking e participação percentual no total.
+      Granularidade: uma linha por (municipio_id, ano_exercicio, codigo_funcao).
+    columns:
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: ano_exercicio
+        description: "Ano fiscal."
+      - name: codigo_funcao
+        description: "Código da função orçamentária (ex: 10 = Saúde, 12 = Educação)."
+      - name: nome_funcao
+        description: "Nome da área de política pública (ex: Saúde, Educação, Saneamento Básico)."
+      - name: total_empenhado_ano
+        description: "Total empenhado na função durante o ano em R$."
+      - name: total_liquidado_ano
+        description: "Total liquidado na função durante o ano em R$."
+      - name: total_pago_ano
+        description: "Total pago na função durante o ano em R$."
+      - name: percentual_executado
+        description: "Taxa de execução da função no ano: pago / empenhado * 100."
+      - name: percentual_orcamento_total
+        description: "Participação percentual da função no orçamento total pago do município."
+      - name: rank_funcao_no_ano
+        description: "Posição da função no ranking de maiores gastos do ano (1 = maior)."

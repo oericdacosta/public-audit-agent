@@ -32,12 +32,16 @@ class QueryTimeout(Exception):
 
 
 def _get_db() -> "DatabaseManager":
-    """Lazy-load the database manager."""
+    """Lazy-load the database manager in read-only mode.
+
+    Read-only allows multiple concurrent readers (agent + MCP server)
+    without DuckDB file lock conflicts.
+    """
     global _db
     if _db is None:
         from src.etl.db_manager import DatabaseManager
 
-        _db = DatabaseManager()
+        _db = DatabaseManager(read_only=True)
     return _db
 
 
@@ -88,11 +92,23 @@ def validate_sql_safety(sql_query: str) -> Tuple[bool, str]:
         "TRUNCATE",
         "EXEC",
         "EXECUTE",
+        "COPY",
+        "ATTACH",
+        "LOAD",
+        "INSTALL",
+        "CALL",
     ]
     for keyword in dangerous_keywords:
         pattern = rf"\b{keyword}\b"
         if re.search(pattern, normalized):
             return False, f"{keyword} operations are not allowed."
+
+    # Block dangerous DuckDB file/network reader functions
+    dangerous_functions_pattern = (
+        r"\b(read_csv|read_parquet|read_json|read_excel|read_csv_auto|glob)\s*\("
+    )
+    if re.search(dangerous_functions_pattern, normalized, re.IGNORECASE):
+        return False, "File reader functions are not allowed for security reasons."
 
     semicolon_count = sanitized.count(";")
     if semicolon_count > 1:

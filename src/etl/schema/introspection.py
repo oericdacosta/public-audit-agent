@@ -51,7 +51,7 @@ class SchemaIntrospector:
             Dictionary mapping table names to DDL strings.
         """
         with self._db_manager.get_connection() as conn:
-            tables = self.get_all_tables()
+            tables = [row[0] for row in conn.execute("SHOW TABLES").fetchall()]
             if limit_tables:
                 tables = [t for t in tables if t in limit_tables]
 

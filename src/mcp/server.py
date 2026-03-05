@@ -148,9 +148,29 @@ def _get_database_tools() -> tuple:
 )
 def query_sql(sql_query: str) -> str:
     """Execute a SQL query via the database tools."""
+    import json
+    import math
+
     tool_query_sql, _, _, _ = _get_database_tools()
     result = tool_query_sql(sql_query)
-    return str(result)
+    if isinstance(result, list):
+        sanitized = []
+        for row in result:
+            if isinstance(row, dict):
+                sanitized.append(
+                    {
+                        k: (
+                            None
+                            if isinstance(v, float) and (math.isnan(v) or math.isinf(v))
+                            else v
+                        )
+                        for k, v in row.items()
+                    }
+                )
+            else:
+                sanitized.append(row)
+        return json.dumps(sanitized, ensure_ascii=False)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @register_tool(

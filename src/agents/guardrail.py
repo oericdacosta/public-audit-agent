@@ -5,7 +5,8 @@ Input and output safety validation for the audit workflow.
 """
 
 import logging
-from typing import Any, cast
+import re
+from typing import Any, Optional, cast
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -16,6 +17,166 @@ from src.utils.logger import observe_node
 from src.utils.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Fast-path deterministic guardrail — runs before the LLM check
+# ---------------------------------------------------------------------------
+
+# Keywords that clearly indicate a public audit / fiscal query
+_FISCAL_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "despesa",
+        "despesas",
+        "gasto",
+        "gastos",
+        "pago",
+        "pagamento",
+        "pagamentos",
+        "receita",
+        "receitas",
+        "arrecadação",
+        "arrecadacao",
+        "arrecadado",
+        "licitação",
+        "licitações",
+        "licitacao",
+        "licitacoes",
+        "contrato",
+        "contratos",
+        "fornecedor",
+        "fornecedores",
+        "contratado",
+        "orçamento",
+        "orcamento",
+        "empenho",
+        "empenhos",
+        "liquidado",
+        "liquidação",
+        "servidor",
+        "servidores",
+        "agente",
+        "agentes",
+        "educação",
+        "educacao",
+        "saúde",
+        "saude",
+        "administração",
+        "administracao",
+        "sobral",
+        "municipio",
+        "município",
+        "cidade",
+        "prefeitura",
+        "tce",
+        "auditoria",
+        "transparência",
+        "transparencia",
+        "nota fiscal",
+        "notas fiscais",
+        "balancete",
+        "orçamentário",
+        "orcamentario",
+        "função",
+        "funcao",
+        "programa",
+        "órgão",
+        "orgao",
+        "secretaria",
+        "licitante",
+        "licitantes",
+        "pregão",
+        "pregao",
+        "dispensa",
+    }
+)
+
+# Simple greeting patterns — always safe
+_GREETING_PATTERNS: frozenset[str] = frozenset(
+    {
+        "bom dia",
+        "boa tarde",
+        "boa noite",
+        "olá",
+        "ola",
+        "oi",
+        "hi",
+        "hello",
+        "tudo bem",
+        "tudo bom",
+        "como vai",
+    }
+)
+
+# Patterns that indicate a suspicious / injection attempt
+_SUSPICIOUS_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"ignore\s+(previous|above|all|your)", re.IGNORECASE),
+    re.compile(r"\b(system|assistant|human)\s*:", re.IGNORECASE),
+    re.compile(r"\b(jailbreak|dan\s+mode|developer\s+mode)\b", re.IGNORECASE),
+    re.compile(r"https?://", re.IGNORECASE),
+    re.compile(r"\b(rm\s+-rf|sudo|chmod|curl|wget)\b", re.IGNORECASE),
+]
+
+
+def _fast_path_verdict(text: str) -> Optional[str]:
+    """
+    Deterministic guardrail check — no LLM required.
+
+    Returns "SAFE" if the query is obviously a fiscal audit query or greeting.
+    Returns "UNSAFE" if suspicious patterns are detected.
+    Returns None if the query is ambiguous (LLM check needed).
+
+    Args:
+        text: The user input to evaluate.
+
+    Returns:
+        "SAFE", "UNSAFE", or None (defer to LLM).
+    """
+    if len(text) > 600:
+        return None  # Long inputs deferred to LLM for thorough analysis
+
+    text_lower = text.lower()
+
+    # Block if any suspicious pattern matches
+    for pattern in _SUSPICIOUS_PATTERNS:
+        if pattern.search(text_lower):
+            return "UNSAFE"
+
+    # Fast-approve greetings
+    if any(greet in text_lower for greet in _GREETING_PATTERNS):
+        return "SAFE"
+
+    # Fast-approve clearly fiscal queries
+    words = re.findall(r"[\w\u00c0-\u024f]+", text_lower)
+    word_set = set(words)
+    if word_set & _FISCAL_KEYWORDS:
+        return "SAFE"
+
+    return None  # Ambiguous — let the LLM decide
+
+
+# ---------------------------------------------------------------------------
+# Deterministic PII redaction patterns — no LLM needed
+# ---------------------------------------------------------------------------
+
+# Deterministic PII redaction patterns — no LLM needed
+_PII_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b"), "[CPF REDACTED]"),
+    (
+        re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
+        "[EMAIL REDACTED]",
+    ),  # noqa: E501
+    (re.compile(r"\(\d{2}\)\s?\d{4,5}-\d{4}"), "[TELEFONE REDACTED]"),
+    (re.compile(r"\bsk-[a-zA-Z0-9]{20,}\b"), "[API_KEY REDACTED]"),
+    (re.compile(r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b"), "[CARD REDACTED]"),
+]
+
+
+def _redact_pii(text: str) -> str:
+    """Apply all PII redaction patterns to text."""
+    for pattern, replacement in _PII_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 @observe_node(event_type="GUARDRAIL")
@@ -38,11 +199,26 @@ def guardrail_input(state: AgentState) -> dict[str, Any]:
             user_input = cast(str, m.content)
             break
 
-    # Load safety prompt using shared utility
-    safety_prompt = load_prompt("guardrail_input.md")
+    # --- Fast-path: deterministic check (no LLM call) ---
+    fast_verdict = _fast_path_verdict(user_input)
+    if fast_verdict == "SAFE":
+        logger.debug("GUARDRAIL: fast-path SAFE")
+        return {"guardrail_verdict": "SAFE", "user_question": user_input}
+    if fast_verdict == "UNSAFE":
+        logger.warning("GUARDRAIL: fast-path UNSAFE: %s", user_input[:100])
+        return {
+            "guardrail_verdict": "UNSAFE",
+            "output": (
+                "🚫 **Process blocked by Security Policy.**\n"
+                "Your request was flagged as unsafe or irrelevant "
+                "to the public audit context."
+            ),
+        }
 
-    # Use config-driven model for cost-effective checks
-    llm = get_llm("guardrail_model")
+    # --- Slow-path: LLM check for ambiguous queries ---
+    logger.debug("GUARDRAIL: ambiguous input — falling back to LLM check")
+    safety_prompt = load_prompt("guardrail_input.md")
+    llm = get_llm("guardrail_model", timeout=30)
 
     chain = (
         ChatPromptTemplate.from_messages(
@@ -65,36 +241,54 @@ def guardrail_input(state: AgentState) -> dict[str, Any]:
             ),
         }
 
-    return {"guardrail_verdict": "SAFE"}
+    return {"guardrail_verdict": "SAFE", "user_question": user_input}
 
 
 @observe_node(event_type="GUARDRAIL")
 def guardrail_output(state: AgentState) -> dict[str, str]:
     """
-    Sanitize and validate output before returning to user.
+    Sanitize output before returning to user using deterministic regex PII detection.
+
+    Replaces the LLM-based output guardrail with pattern matching for:
+    - CPF numbers (000.000.000-00)
+    - Email addresses
+    - Brazilian phone numbers
+    - API keys (sk-...)
+    - Credit card numbers
+
+    When execution never ran (abort path after max critic retries), builds an
+    informative message from the last critic evaluation instead of returning the
+    opaque "No output generated." string.
 
     Args:
         state: Current agent state containing output to validate.
 
     Returns:
-        Updated state with sanitized output.
+        Updated state with PII-redacted output.
     """
-    output = state.get("output", "No output.")
+    raw_output = state.get("output")
 
-    # Load safety prompt using shared utility
-    safety_prompt = load_prompt("guardrail_output.md")
-
-    # Use config-driven model for cost-effective checks
-    llm = get_llm("guardrail_model")
-
-    chain = (
-        ChatPromptTemplate.from_messages(
-            [("system", safety_prompt), ("human", "{input}")]
+    if not raw_output:
+        # Execution never ran — critic rejected max_retries times.
+        # Surface the last critic evaluation so the user understands why.
+        evaluation = state.get("evaluation") or "No evaluation recorded."
+        iterations = state.get("iterations", 0)
+        raw_output = (
+            "The agent was unable to generate a valid response after "
+            f"{iterations} attempt(s).\n\n"
+            "Last reviewer feedback:\n"
+            f"{evaluation}\n\n"
+            "Please rephrase your question or provide additional context."
         )
-        | llm
-    )
+        logger.warning(
+            "Abort path reached after %d iterations. Last evaluation: %s",
+            iterations,
+            evaluation[:200],
+        )
 
-    response = chain.invoke({"input": output})
-    sanitized_output = cast(str, response.content).strip()
+    sanitized = _redact_pii(raw_output)
 
-    return {"output": sanitized_output}
+    if sanitized != raw_output:
+        logger.info("PII redacted from output")
+
+    return {"output": sanitized}

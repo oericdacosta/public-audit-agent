@@ -1,4 +1,4 @@
-.PHONY: up down restart logs shell clean lint test typecheck format install check security docker-build docker-test ci airflow-up airflow-down airflow-logs airflow-restart airflow-trigger
+.PHONY: up down restart logs shell clean lint test typecheck format install check security docker-build docker-test ci airflow-up airflow-down airflow-logs airflow-restart airflow-trigger agent-up mcp-up mcp-down
 
 # Project Variables
 COMPOSE = docker compose
@@ -36,6 +36,34 @@ docker-test: docker-build
 	@echo "Testing Docker image..."
 	docker run --rm public-audit-agent:local python -c "from src.config import get_settings; print('✅ Config OK')"
 	@echo "✅ Docker image test passed!"
+
+# ──────────────────────────────────────────────────────────
+# Agent / Chat Commands
+# ──────────────────────────────────────────────────────────
+MCP_PID_FILE := .mcp_server.pid
+
+mcp-up:
+	@echo "🔌 Starting MCP TCP server (0.0.0.0:8000)..."
+	@fuser -k 8000/tcp 2>/dev/null || true
+	@sleep 0.5
+	@uv run python -m src.mcp.tcp_server --host 0.0.0.0 & echo $$! > $(MCP_PID_FILE)
+	@sleep 1
+	@echo "✅ MCP server running (PID=$$(cat $(MCP_PID_FILE)))"
+
+mcp-down:
+	@if [ -f $(MCP_PID_FILE) ]; then \
+		kill $$(cat $(MCP_PID_FILE)) 2>/dev/null && echo "🛑 MCP server stopped" || echo "⚠️  MCP server already stopped"; \
+		rm -f $(MCP_PID_FILE); \
+	else \
+		echo "⚠️  No MCP PID file found"; \
+	fi
+
+agent-up: mcp-up
+	@echo "🌐 Ensuring Docker network exists..."
+	@docker network inspect public-audit-agent_net >/dev/null 2>&1 \
+		|| docker network create public-audit-agent_net
+	@echo "💬 Starting chat interface... (Ctrl+C to quit)"
+	@MCP_HOST=host.docker.internal uv run python scripts/chat.py; $(MAKE) mcp-down
 
 # ──────────────────────────────────────────────────────────
 # Development Commands

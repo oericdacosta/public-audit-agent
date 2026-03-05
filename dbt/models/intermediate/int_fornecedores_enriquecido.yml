@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: int_fornecedores_enriquecido
+    description: >
+      Perfil enriquecido de fornecedores (contratados e licitantes). Consolida dados de
+      int_fornecedores_perfil com agregações de contratos, calculando tipo de pessoa,
+      porte, e flags de risco. Serve como base para dim_fornecedores e int_contratos_fornecedores.
+    columns:
+      - name: nome_negociante
+        description: "Nome do fornecedor/negociante (chave natural)."
+      - name: documento_negociante
+        description: "CPF ou CNPJ do fornecedor (pode ser nulo)."
+      - name: is_pessoa_juridica
+        description: "True se o documento tem 14 dígitos (CNPJ)."
+      - name: tipo_pessoa
+        description: "Label: Pessoa Jurídica, Pessoa Física ou Não identificado."
+      - name: total_contratos
+        description: "Quantidade total de contratos distintos celebrados."
+      - name: contratos_ativos
+        description: "Quantidade de contratos com vigência ativa na data atual."
+      - name: contratos_vencidos
+        description: "Quantidade de contratos com vigência expirada."
+      - name: valor_total_contratos
+        description: "Soma de todos os valores de contratos celebrados."
+      - name: maior_contrato_valor
+        description: "Valor do maior contrato individual celebrado."
+      - name: municipios_contratantes
+        description: "Quantidade de municípios distintos que contrataram este fornecedor."
+      - name: primeiro_contrato_em
+        description: "Data do primeiro contrato celebrado."
+      - name: ultimo_contrato_em
+        description: "Data do contrato mais recente."
+      - name: total_licitacoes_participou
+        description: "Quantidade de licitações em que o fornecedor participou como licitante."
+      - name: flag_contratado_sem_licitacao
+        description: "True se o fornecedor tem contratos mas nunca participou de licitações."
+      - name: porte_fornecedor
+        description: "Classificação por valor total: Grande (>R$1M), Médio (R$100k-R$1M), Pequeno (<R$100k)."

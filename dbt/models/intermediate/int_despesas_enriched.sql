@@ -21,7 +21,13 @@ with despesas as (
 )
 
 , classificacao as (
-    select *
+    select distinct
+        codigo_funcao
+        , nome_funcao
+        , codigo_programa
+        , nome_programa
+        , municipio_id
+        , ano_exercicio
     from {{ ref('int_classificacao_orcamentaria') }}
 )
 
@@ -42,8 +48,6 @@ with despesas as (
         , dep.codigo_programa
         , cla.nome_programa
         , dep.codigo_elemento_despesa
-        , cla.codigo_projeto_atividade
-        , cla.nome_projeto_atividade
         , dep.valor_empenhado
         , dep.valor_liquidado
         , dep.valor_pago

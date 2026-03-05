@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: int_licitacoes_risco
+    description: >
+      Licitações enriquecidas com indicadores de risco e conformidade. Combina
+      int_licitacoes_enriched com int_compras_diretas para calcular score_risco (0-4),
+      desvio entre valor estimado e contratado, e flags de irregularidade.
+    columns:
+      - name: licitacao_id
+        description: "Chave primária da licitação."
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: desvio_valor_absoluto
+        description: "Diferença absoluta entre valor_total_vencedor e valor_estimado."
+      - name: desvio_valor_percentual
+        description: "Desvio percentual entre valor contratado e estimado."
+      - name: flag_possivel_superfaturamento
+        description: "True se o valor vencedor supera o estimado em mais de 10%."
+      - name: flag_dispensa_acima_limite
+        description: "True se é dispensa com valor acima de R$50k (limite legal)."
+      - name: score_risco
+        description: "Score composto de 0 a 4: deserta + único licitante + dispensa acima do limite + superfaturamento."

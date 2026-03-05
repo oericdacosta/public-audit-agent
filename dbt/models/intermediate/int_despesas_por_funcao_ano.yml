@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: int_despesas_por_funcao_ano
+    description: "Despesas pré-agregadas por função orçamentária e ano de exercício. Granularidade: uma linha por (codigo_funcao, municipio_id, ano_exercicio)."
+    columns:
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: codigo_funcao
+        description: "Código da função orçamentária."
+      - name: nome_funcao
+        description: "Descrição da função orçamentária."
+      - name: total_empenhado_ano
+        description: "Soma anual dos valores empenhados."
+      - name: total_liquidado_ano
+        description: "Soma anual dos valores liquidados."
+      - name: total_pago_ano
+        description: "Soma anual dos valores pagos."
+      - name: percentual_executado
+        description: "Percentual de execução anual: total_pago_ano / total_empenhado_ano * 100."
+      - name: percentual_orcamento_total
+        description: "Participação percentual da função no total de pagamentos do município no ano."
+      - name: rank_funcao_no_ano
+        description: "Ranking da função no ano por volume de pagamentos dentro do município (1 = maior)."

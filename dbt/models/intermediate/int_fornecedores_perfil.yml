@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: int_fornecedores_perfil
+    description: "Perfil consolidado de fornecedores com histórico de contratos e participação em licitações. Granularidade: uma linha por nome_negociante. Nota: stg_negociantes está vazia e documento_negociante é majoritariamente nulo em stg_contratados — a base é construída a partir de stg_contratados por nome."
+    columns:
+      - name: nome_negociante
+        description: "Nome do fornecedor/negociante. Chave natural do perfil."
+        tests: [unique, not_null]
+      - name: total_contratos
+        description: "Quantidade de contratos distintos associados ao fornecedor."
+      - name: municipios_distintos
+        description: "Quantidade de municípios distintos em que o fornecedor possui contratos."
+      - name: primeiro_contrato_em
+        description: "Data do primeiro contrato assinado pelo fornecedor."
+      - name: ultimo_contrato_em
+        description: "Data do contrato mais recente assinado pelo fornecedor."
+      - name: total_licitacoes_participou
+        description: "Quantidade de licitações distintas em que o fornecedor participou como licitante."

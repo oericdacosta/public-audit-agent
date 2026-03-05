@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: int_classificacao_orcamentaria
+    description: "Pré-junção de funções, programas e projetos/atividades orçamentárias. Granularidade: uma linha por (codigo_funcao, codigo_programa, codigo_projeto_atividade, ano_exercicio, municipio_id). Nota: stg_funcoes não possui ano_exercicio nem municipio_id — junção feita apenas por codigo_funcao."
+    columns:
+      - name: codigo_funcao
+        description: "Código da função orçamentária."
+      - name: nome_funcao
+        description: "Descrição da função orçamentária extraída de raw_data."
+      - name: codigo_programa
+        description: "Código do programa orçamentário."
+      - name: nome_programa
+        description: "Descrição do programa. Preenchida com fallback 'Programa {codigo}' quando nula na fonte."
+      - name: codigo_projeto_atividade
+        description: "Código do projeto ou atividade orçamentária."
+      - name: nome_projeto_atividade
+        description: "Descrição do projeto ou atividade orçamentária."
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: municipio_id
+        description: "Identificador do município."

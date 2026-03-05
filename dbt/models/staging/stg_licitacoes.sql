@@ -1,37 +1,35 @@
-with source as (
-    select * from {{ source('tce_ce', 'licitacoes') }}
-)
-
-, renamed as (
+with
+source_data as (
     select
-        -- ids
-        id                                              as licitacao_id
+        id
         , municipio_id
-
-        -- identifiers
         , numero_licitacao
         , numero_processo
-
-        -- descriptions
         , objeto_licitacao
         , modalidade_licitacao
-
-        -- dates
-        , data_realizacao_licitacao                       as data_realizacao
-
-        -- amounts
+        , data_realizacao_licitacao
         , valor_estimado
-
-        -- status
         , situacao_licitacao
-
-        -- dates
-        , cast(exercicio_orcamento as integer)            as ano_exercicio
-
-        -- metadata
-        , updated_at                                      as data_carga
-
-    from source
+        , exercicio_orcamento
+        , updated_at
+    from {{ source('tce_ce', 'licitacoes') }}
 )
 
-select * from renamed
+, stg_licitacoes as (
+    select
+        cast(id as varchar) as licitacao_id
+        , cast(municipio_id as varchar) as municipio_id
+        , cast(numero_licitacao as varchar) as numero_licitacao
+        , cast(numero_processo as varchar) as numero_processo
+        , cast(objeto_licitacao as varchar) as objeto_licitacao
+        , cast(modalidade_licitacao as varchar) as modalidade_licitacao
+        , try_cast(data_realizacao_licitacao as date) as data_realizacao
+        , cast(valor_estimado as decimal(18, 2)) as valor_estimado
+        , cast(situacao_licitacao as varchar) as situacao_licitacao
+        , cast(exercicio_orcamento as integer) as ano_exercicio
+        , cast(updated_at as timestamp) as updated_at
+    from source_data
+)
+
+select *
+from stg_licitacoes

@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: int_orgaos_enriched
+    description: "Pré-junção de órgãos com unidades orçamentárias. Usado como bloco de construção por int_despesas_enriched. Granularidade: uma linha por (codigo_orgao, codigo_unidade_orcamentaria, ano_exercicio, municipio_id)."
+    columns:
+      - name: codigo_orgao
+        description: "Código do órgão."
+        tests: [not_null]
+      - name: nome_orgao
+        description: "Descrição do órgão. Preenchida com fallback 'Orgao {codigo}' quando nula na fonte."
+      - name: codigo_unidade_orcamentaria
+        description: "Código da unidade orçamentária."
+      - name: nome_unidade_orcamentaria
+        description: "Descrição da unidade orçamentária. Preenchida com fallback 'Unidade {codigo}' quando nula na fonte."
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: municipio_id
+        description: "Identificador do município."

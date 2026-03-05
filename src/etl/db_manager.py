@@ -66,8 +66,14 @@ class DatabaseManager:
     DuckDB file handle conflicts in multi-threaded environments.
     """
 
-    def __init__(self) -> None:
-        """Initialize the database manager with configured path."""
+    def __init__(self, read_only: bool = False) -> None:
+        """Initialize the database manager with configured path.
+
+        Args:
+            read_only: Open connection in read-only mode. Allows multiple
+                       concurrent readers without DuckDB lock conflicts.
+                       Use True for query-only workloads (MCP server, agent).
+        """
         settings = get_settings()
         try:
             db_path_str = settings["database"]["path"]
@@ -86,7 +92,9 @@ class DatabaseManager:
             ) from e
         self._setup_directories()
         # Single persistent connection + lock for thread safety
-        self._conn: DuckDBPyConnection = duckdb.connect(self.db_path)
+        self._conn: DuckDBPyConnection = duckdb.connect(
+            self.db_path, read_only=read_only
+        )
         self._conn_lock = threading.Lock()
         # Cache for table column info
         self._columns_cache: dict[str, list[str]] = {}

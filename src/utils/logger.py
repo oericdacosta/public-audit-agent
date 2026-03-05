@@ -98,6 +98,7 @@ def observe_node(event_type: str = "NODE_EXECUTION") -> Callable[[F], F]:
             result = None
             status = "SUCCESS"
             error = None
+            output_summary = ""
             token_usage: dict[str, Any] = {}
 
             try:

@@ -9,19 +9,13 @@ import asyncio
 import json
 import logging
 import traceback
-from typing import Any, Callable
-
-from src.tools.sql import describe_table, list_tables, query_sql, search_definitions
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Map tool names to functions
-TOOL_MAP: dict[str, Callable[..., Any]] = {
-    "list_tables": list_tables,
-    "query_sql": query_sql,
-    "describe_table": describe_table,
-    "search_definitions": search_definitions,
-}
+# Import the unified tool registry from the STDIO MCP server
+# This ensures TCP and STDIO servers always have identical tool sets
+from src.mcp.server import _TOOL_HANDLERS as TOOL_MAP  # noqa: E402
 
 
 async def handle_client(
@@ -116,7 +110,7 @@ async def handle_client(
         await writer.wait_closed()
 
 
-async def start_tcp_server(host: str = "0.0.0.0", port: int = 8000) -> None:  # nosec B104
+async def start_tcp_server(host: str = "127.0.0.1", port: int = 8000) -> None:
     """
     Start the TCP server.
 
@@ -138,7 +132,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="CivicAudit MCP TCP Server")
     parser.add_argument("--port", type=int, default=8000, help="Port to listen on")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to")  # nosec B104
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to")
     args = parser.parse_args()
 
     try:

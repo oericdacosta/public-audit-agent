@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: fct_contratos
+    description: >
+      Fato de contratos celebrados. Uma linha por contrato_id.
+      Seletor fino sobre int_contratos_enriched. Contém dados do contratado e
+      indicadores de vigência. Para perguntas sobre concentração de fornecedores ou
+      valor total por fornecedor, prefira fct_contratos_fornecedores.
+      Granularidade: uma linha por contrato_id.
+
+      LIMITAÇÃO CONHECIDA — ausência de FK na fonte TCE-CE:
+      Não existe ligação entre contratos e licitações (fct_licitacoes) nem entre contratos
+      e despesas (fct_despesas) nos dados fornecidos pela API. Não é possível responder
+      "qual licitação originou este contrato?" ou "quais empenhos pagaram este contrato?".
+    columns:
+      - name: contrato_id
+        description: "Chave primária do contrato."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: numero_contrato
+        description: "Número do contrato."
+      - name: data_contrato
+        description: "Data de assinatura do contrato."
+      - name: ano_contrato
+        description: "Ano de assinatura do contrato (extraído da data)."
+      - name: data_inicio_vigencia
+        description: "Data de início da vigência contratual."
+      - name: data_fim_vigencia
+        description: "Data de término da vigência contratual."
+      - name: duracao_vigencia_dias
+        description: "Duração da vigência em dias. Nulo quando datas são nulas."
+      - name: descricao_objeto
+        description: "Descrição do objeto do contrato."
+      - name: tipo_contrato
+        description: "Tipo de contrato (ex: Serviços, Obras, Fornecimento)."
+      - name: valor_total
+        description: "Valor total do contrato em R$."
+      - name: faixa_valor_contrato
+        description: "Faixa de valor: 'acima de R$650k', 'R$50k a R$650k', 'até R$50k', 'não informado'."
+      - name: nome_fornecedor
+        description: "Nome do fornecedor/empresa contratada."
+      - name: documento_fornecedor
+        description: "CPF ou CNPJ do fornecedor. Pode ser nulo."
+      - name: flag_contrato_ativo
+        description: "Verdadeiro quando a data atual está dentro do período de vigência."
+      - name: flag_contrato_vencido
+        description: "Verdadeiro quando a data de fim de vigência é anterior a hoje."
+      - name: dias_para_vencer
+        description: "Dias até o vencimento (negativo = já vencido). Nulo quando data_fim_vigencia é nula."
+      - name: updated_at
+        description: "Timestamp da última atualização."

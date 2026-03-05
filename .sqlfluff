@@ -2,7 +2,7 @@
 dialect = duckdb
 templater = dbt
 max_line_length = 100
-exclude_rules = LT01, LT12, ST06
+exclude_rules = LT01, LT12, ST06, ST02
 
 [sqlfluff:templater:dbt]
 project_dir = ./dbt

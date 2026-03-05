@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: dim_municipios
+    description: >
+      Dimensão de municípios. Cadastro básico de cada município disponível no sistema.
+      Serve como âncora de contexto para o agente: todas as tabelas de fato e OBTs
+      já trazem nome_municipio desnormalizado para evitar JOINs adicionais.
+      Granularidade: uma linha por municipio_id.
+    columns:
+      - name: municipio_id
+        description: "Chave primária do município (gerada pelo ETL)."
+        tests: [unique, not_null]
+      - name: codigo_municipio
+        description: "Código oficial do município no TCE-CE."
+      - name: nome_municipio
+        description: "Nome completo do município (ex: Fortaleza, Sobral)."
+      - name: updated_at
+        description: "Timestamp da última atualização do registro."

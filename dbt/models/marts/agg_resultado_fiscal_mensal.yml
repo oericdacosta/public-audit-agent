@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: agg_resultado_fiscal_mensal
+    description: >
+      Resultado fiscal mensal do município: receita arrecadada vs. despesa paga,
+      com acumulados no ano e indicador de superávit/déficit. Tabela principal
+      para responder perguntas sobre saúde financeira municipal.
+      Granularidade: uma linha por (municipio_id, ano_exercicio, mes_referencia).
+    columns:
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: ano_exercicio
+        description: "Ano fiscal."
+      - name: mes_referencia
+        description: "Mês no formato YYYYMM."
+      - name: mes_referencia_date
+        description: "Primeiro dia do mês (tipo date)."
+      - name: trimestre
+        description: "Trimestre: T1, T2, T3, T4."
+      - name: nome_mes_referencia
+        description: "Nome do mês em português (ex: Janeiro, Fevereiro)."
+      - name: total_despesa_empenhada
+        description: "Total de despesas empenhadas no mês em R$."
+      - name: total_despesa_paga
+        description: "Total de despesas pagas no mês em R$."
+      - name: total_receita_arrecadada
+        description: "Total de receitas arrecadadas no mês em R$."
+      - name: resultado_primario
+        description: "Resultado do mês: receita_arrecadada - despesa_paga (positivo = superávit)."
+      - name: is_superavit
+        description: "Verdadeiro quando o resultado primário do mês é positivo."
+      - name: percentual_execucao_despesa
+        description: "Percentual de execução das despesas no mês: pago / empenhado * 100."
+      - name: receita_acumulada_ano
+        description: "Soma acumulada das receitas arrecadadas desde janeiro do exercício."
+      - name: despesa_acumulada_ano
+        description: "Soma acumulada das despesas pagas desde janeiro do exercício."
+      - name: resultado_acumulado_ano
+        description: "Resultado fiscal acumulado desde janeiro (positivo = superávit acumulado)."
+      - name: is_superavit_acumulado
+        description: "Verdadeiro quando o resultado acumulado no ano é positivo."
+      - name: situacao_fiscal_acumulada
+        description: "'Superávit acumulado', 'Déficit acumulado' ou 'Equilibrado'."

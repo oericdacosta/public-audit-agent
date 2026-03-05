@@ -1,16 +1,25 @@
-with source as (
-    select * from {{ source('tce_ce', 'orgaos') }}
-)
-
-, renamed as (
+with
+source_data as (
     select
-        id                                          as orgao_id
+        id
         , municipio_id
         , codigo_orgao
         , descricao_orgao
-        , cast(exercicio_orcamento as integer)        as ano_exercicio
+        , exercicio_orcamento
         , updated_at
-    from source
+    from {{ source('tce_ce', 'orgaos') }}
 )
 
-select * from renamed
+, stg_orgaos as (
+    select
+        cast(id as varchar) as orgao_id
+        , cast(municipio_id as varchar) as municipio_id
+        , cast(codigo_orgao as varchar) as codigo_orgao
+        , cast(descricao_orgao as varchar) as descricao_orgao
+        , cast(exercicio_orcamento as integer) as ano_exercicio
+        , cast(updated_at as timestamp) as updated_at
+    from source_data
+)
+
+select *
+from stg_orgaos

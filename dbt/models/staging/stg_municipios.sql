@@ -1,18 +1,27 @@
-with source as (
-    select * from {{ source('tce_ce', 'municipios') }}
-)
-
-, renamed as (
+with
+source_data as (
     select
-        id                                              as municipio_id
+        id
         , codigo_municipio
         , nome_municipio
+        , uf
+        , raw_data
         , updated_at
-        , coalesce(
-            uf
-            , json_extract_string(raw_data, '$.uf')
-        )                                               as uf
-    from source
+    from {{ source('tce_ce', 'municipios') }}
 )
 
-select * from renamed
+, stg_municipios as (
+    select
+        cast(id as varchar) as municipio_id
+        , cast(codigo_municipio as varchar) as codigo_municipio
+        , cast(nome_municipio as varchar) as nome_municipio
+        , cast(
+            coalesce(uf, json_extract_string(raw_data, '$.uf'))
+            as varchar
+        ) as uf
+        , cast(updated_at as timestamp) as updated_at
+    from source_data
+)
+
+select *
+from stg_municipios

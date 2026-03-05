@@ -1,34 +1,41 @@
-with source as (
-    select * from {{ source('tce_ce', 'despesas') }}
-)
-
-, renamed as (
+with
+source_data as (
     select
-        -- ids
-        id                                              as despesa_id
+        id
         , municipio_id
-
-        -- dates
-        , cast(exercicio_orcamento as integer)            as ano_exercicio
+        , exercicio_orcamento
         , mes_referencia
-
-        -- classifications
         , codigo_orgao
         , codigo_unidade_orcamentaria
         , codigo_funcao
         , codigo_subfuncao
         , codigo_programa
         , codigo_elemento_despesa
-
-        -- amounts
         , valor_empenhado
         , valor_liquidado
         , valor_pago
-
-        -- metadata
-        , updated_at                                      as data_carga
-
-    from source
+        , updated_at
+    from {{ source('tce_ce', 'despesas') }}
 )
 
-select * from renamed
+, stg_despesas as (
+    select
+        cast(id as varchar) as despesa_id
+        , cast(municipio_id as varchar) as municipio_id
+        , cast(exercicio_orcamento as integer) as ano_exercicio
+        , cast(mes_referencia as varchar) as mes_referencia
+        , cast(codigo_orgao as varchar) as codigo_orgao
+        , cast(codigo_unidade_orcamentaria as varchar) as codigo_unidade_orcamentaria
+        , cast(codigo_funcao as varchar) as codigo_funcao
+        , cast(codigo_subfuncao as varchar) as codigo_subfuncao
+        , cast(codigo_programa as varchar) as codigo_programa
+        , cast(codigo_elemento_despesa as varchar) as codigo_elemento_despesa
+        , cast(valor_empenhado as decimal(18, 2)) as valor_empenhado
+        , cast(valor_liquidado as decimal(18, 2)) as valor_liquidado
+        , cast(valor_pago as decimal(18, 2)) as valor_pago
+        , cast(updated_at as timestamp) as updated_at
+    from source_data
+)
+
+select *
+from stg_despesas

@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: int_receitas_por_orgao_mes
+    description: "Receitas pré-agregadas por órgão e mês de referência. Granularidade: uma linha por (codigo_orgao, municipio_id, mes_referencia, ano_exercicio)."
+    columns:
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: mes_referencia
+        description: "Mês de referência no formato YYYYMM."
+      - name: mes_referencia_date
+        description: "Mês de referência convertido para tipo date (primeiro dia do mês)."
+      - name: trimestre
+        description: "Trimestre do ano: T1, T2, T3 ou T4."
+      - name: codigo_orgao
+        description: "Código do órgão."
+      - name: nome_orgao
+        description: "Nome do órgão."
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: total_orcado
+        description: "Soma dos valores orçados para arrecadação no período."
+      - name: total_arrecadado
+        description: "Soma dos valores efetivamente arrecadados no período."
+      - name: superavit_deficit
+        description: "Diferença entre total arrecadado e total orçado. Positivo indica superávit."
+      - name: percentual_arrecadado
+        description: "Percentual de arrecadação sobre o orçado."
+      - name: rank_receita_no_mes
+        description: "Ranking do órgão no mês por volume arrecadado (1 = maior arrecadador)."

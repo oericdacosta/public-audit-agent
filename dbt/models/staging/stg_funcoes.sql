@@ -1,17 +1,25 @@
-with source as (
-    select * from {{ source('tce_ce', 'funcoes') }}
-)
-
-, renamed as (
+with
+source_data as (
     select
-        id                                              as funcao_id
+        id
         , codigo_funcao
+        , descricao_funcao
+        , raw_data
         , updated_at
-        , coalesce(
-            descricao_funcao
-            , json_extract_string(raw_data, '$.nome_funcao')
-        )                                               as descricao_funcao
-    from source
+    from {{ source('tce_ce', 'funcoes') }}
 )
 
-select * from renamed
+, stg_funcoes as (
+    select
+        cast(id as varchar) as funcao_id
+        , cast(codigo_funcao as varchar) as codigo_funcao
+        , cast(
+            coalesce(descricao_funcao, json_extract_string(raw_data, '$.nome_funcao'))
+            as varchar
+        ) as descricao_funcao
+        , cast(updated_at as timestamp) as updated_at
+    from source_data
+)
+
+select *
+from stg_funcoes

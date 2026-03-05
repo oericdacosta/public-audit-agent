@@ -1,16 +1,25 @@
-with source as (
-    select * from {{ source('tce_ce', 'ordenadores') }}
-)
-
-, renamed as (
+with
+source_data as (
     select
-        id                                          as ordenador_id
+        id
         , municipio_id
         , codigo_ordenador
         , nome_ordenador
-        , cast(exercicio_orcamento as integer)        as ano_exercicio
+        , exercicio_orcamento
         , updated_at
-    from source
+    from {{ source('tce_ce', 'ordenadores') }}
 )
 
-select * from renamed
+, stg_ordenadores as (
+    select
+        cast(id as varchar) as ordenador_id
+        , cast(municipio_id as varchar) as municipio_id
+        , cast(codigo_ordenador as varchar) as codigo_ordenador
+        , cast(nome_ordenador as varchar) as nome_ordenador
+        , cast(exercicio_orcamento as integer) as ano_exercicio
+        , cast(updated_at as timestamp) as updated_at
+    from source_data
+)
+
+select *
+from stg_ordenadores

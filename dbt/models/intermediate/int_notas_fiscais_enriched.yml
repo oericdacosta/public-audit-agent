@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: int_notas_fiscais_enriched
+    description: "Notas fiscais enriquecidas com dados do negociante e agregação de itens. Granularidade: uma linha por nota_fiscal_id. Nota: cpf_cnpj_credor é nulo na fonte — a junção com negociantes retornará nulos até que dados sejam populados. stg_negociantes também está vazia."
+    columns:
+      - name: nota_fiscal_id
+        description: "Chave primária da nota fiscal."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: numero_nota_fiscal
+        description: "Número da nota fiscal."
+      - name: data_emissao
+        description: "Data de emissão da nota fiscal."
+      - name: tipo_nota_fiscal
+        description: "Tipo da nota fiscal."
+      - name: cpf_cnpj_credor
+        description: "CPF ou CNPJ do credor. Nulo na fonte."
+      - name: valor_bruto
+        description: "Valor bruto da nota fiscal."
+      - name: valor_liquido
+        description: "Valor líquido da nota fiscal."
+      - name: diferenca_bruto_liquido
+        description: "Diferença entre valor bruto e valor líquido (deduções/impostos)."
+      - name: flag_nota_servico
+        description: "Verdadeiro quando o tipo indica nota fiscal de serviço."
+      - name: is_alto_valor
+        description: "Verdadeiro quando o valor líquido supera R$100 mil."
+      - name: faixa_valor
+        description: "Faixa de valor líquido: 'acima de R$100k', 'R$10k a R$100k' ou 'até R$10k'."
+      - name: nome_negociante
+        description: "Nome do negociante (de stg_negociantes, tabela vazia)."
+      - name: endereco_negociante
+        description: "Endereço do negociante (de stg_negociantes, tabela vazia)."
+      - name: uf_negociante
+        description: "UF do negociante (de stg_negociantes, tabela vazia)."
+      - name: total_itens
+        description: "Quantidade de itens da nota fiscal."
+      - name: valor_total_itens
+        description: "Soma dos valores totais dos itens da nota fiscal."
+      - name: updated_at
+        description: "Timestamp da última atualização do registro."

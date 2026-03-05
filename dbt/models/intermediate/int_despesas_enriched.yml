@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: int_despesas_enriched
+    description: "Despesas orçamentárias enriquecidas com informações de órgãos, unidades orçamentárias e classificação funcional-programática. Granularidade: uma linha por despesa_id."
+    columns:
+      - name: despesa_id
+        description: "Chave primária da despesa."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: mes_referencia
+        description: "Mês de referência no formato YYYYMM."
+      - name: mes_referencia_date
+        description: "Mês de referência convertido para tipo date (primeiro dia do mês)."
+      - name: trimestre
+        description: "Trimestre do ano: T1, T2, T3 ou T4."
+      - name: codigo_orgao
+        description: "Código do órgão responsável pela despesa."
+      - name: nome_orgao
+        description: "Nome do órgão com fallback para código quando descrição é nula."
+      - name: codigo_unidade_orcamentaria
+        description: "Código da unidade orçamentária."
+      - name: nome_unidade_orcamentaria
+        description: "Nome da unidade orçamentária com fallback para código quando descrição é nula."
+      - name: codigo_funcao
+        description: "Código da função orçamentária."
+      - name: nome_funcao
+        description: "Descrição da função orçamentária."
+      - name: codigo_subfuncao
+        description: "Código da subfunção orçamentária."
+      - name: codigo_programa
+        description: "Código do programa orçamentário."
+      - name: nome_programa
+        description: "Descrição do programa com fallback para código quando descrição é nula."
+      - name: codigo_elemento_despesa
+        description: "Código do elemento de despesa (classificação econômica)."
+      - name: codigo_projeto_atividade
+        description: "Código do projeto ou atividade orçamentária."
+      - name: nome_projeto_atividade
+        description: "Descrição do projeto ou atividade."
+      - name: valor_empenhado
+        description: "Valor empenhado da despesa."
+      - name: valor_liquidado
+        description: "Valor liquidado da despesa."
+      - name: valor_pago
+        description: "Valor efetivamente pago."
+      - name: valor_nao_pago
+        description: "Diferença entre valor liquidado e valor pago."
+      - name: percentual_executado
+        description: "Percentual de execução: valor_pago / valor_empenhado * 100. Nulo quando empenhado é zero."
+      - name: status_execucao
+        description: "Status de execução: pago_integralmente, pago_parcialmente, liquidado_nao_pago ou empenhado_nao_liquidado."
+      - name: grupo_despesa
+        description: "Grupo econômico da despesa derivado do primeiro dígito do código do elemento: Despesas Correntes, Despesas de Capital ou Outros."
+      - name: is_pago_integralmente
+        description: "Verdadeiro quando o valor pago é igual ou superior ao empenhado."
+      - name: updated_at
+        description: "Timestamp da última atualização do registro."

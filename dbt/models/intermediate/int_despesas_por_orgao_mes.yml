@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: int_despesas_por_orgao_mes
+    description: "Despesas pré-agregadas por órgão e mês de referência. Granularidade: uma linha por (codigo_orgao, municipio_id, mes_referencia, ano_exercicio)."
+    columns:
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: mes_referencia
+        description: "Mês de referência no formato YYYYMM."
+      - name: mes_referencia_date
+        description: "Mês de referência convertido para tipo date (primeiro dia do mês)."
+      - name: trimestre
+        description: "Trimestre do ano: T1, T2, T3 ou T4."
+      - name: codigo_orgao
+        description: "Código do órgão."
+      - name: nome_orgao
+        description: "Nome do órgão."
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: total_empenhado
+        description: "Soma dos valores empenhados no período."
+      - name: total_liquidado
+        description: "Soma dos valores liquidados no período."
+      - name: total_pago
+        description: "Soma dos valores pagos no período."
+      - name: total_nao_pago
+        description: "Soma dos valores liquidados mas não pagos no período."
+      - name: percentual_executado
+        description: "Percentual de execução: total_pago / total_empenhado * 100."
+      - name: rank_orgao_no_mes
+        description: "Ranking do órgão no mês por volume de pagamentos (1 = maior pagador)."

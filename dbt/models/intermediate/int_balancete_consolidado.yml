@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: int_balancete_consolidado
+    description: "Balancete consolidado por período e município, cruzando despesas e receitas orçamentárias. Granularidade: uma linha por (ano_exercicio, mes_referencia, municipio_id). Utiliza FULL OUTER JOIN para preservar períodos com apenas despesas ou apenas receitas."
+    columns:
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: mes_referencia
+        description: "Mês de referência no formato YYYYMM."
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: mes_referencia_date
+        description: "Mês de referência convertido para tipo date (primeiro dia do mês)."
+      - name: trimestre
+        description: "Trimestre do ano: T1, T2, T3 ou T4."
+      - name: nome_mes_referencia
+        description: "Nome do mês de referência em português."
+      - name: total_despesa_empenhada
+        description: "Soma dos valores empenhados no período."
+      - name: total_despesa_paga
+        description: "Soma dos valores pagos no período."
+      - name: total_receita_arrecadada
+        description: "Soma dos valores arrecadados no período."
+      - name: resultado_primario
+        description: "Diferença entre receita arrecadada e despesa paga. Positivo indica superávit."
+      - name: is_superavit
+        description: "Verdadeiro quando o resultado primário é positivo."
+      - name: percentual_execucao_despesa
+        description: "Percentual de execução da despesa: total_despesa_paga / total_despesa_empenhada * 100."

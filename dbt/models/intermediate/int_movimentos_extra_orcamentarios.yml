@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: int_movimentos_extra_orcamentarios
+    description: "União de balancetes de despesas e receitas extra-orçamentárias com discriminador de tipo. Granularidade: uma linha por balancete. Nota: estas tabelas contêm apenas indicadores de presença de período — não há valores monetários."
+    columns:
+      - name: balancete_id
+        description: "Identificador único do balancete (despesa_extra ou receita_extra)."
+        tests: [unique, not_null]
+      - name: tipo_movimento
+        description: "Tipo do movimento extra-orçamentário: 'DESPESA_EXTRA' ou 'RECEITA_EXTRA'."
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: mes_referencia
+        description: "Mês de referência no formato YYYYMM."
+      - name: mes_referencia_date
+        description: "Mês de referência convertido para tipo date (primeiro dia do mês)."

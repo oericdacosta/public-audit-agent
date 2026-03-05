@@ -1,35 +1,48 @@
 with funcoes as (
-    select *
+    select
+        codigo_funcao
+        , descricao_funcao as nome_funcao
     from {{ ref('stg_funcoes') }}
 )
 
 , programas as (
-    select *
+    select
+        codigo_programa
+        , municipio_id
+        , ano_exercicio
+        , coalesce(descricao_programa, 'Programa ' || codigo_programa) as nome_programa
     from {{ ref('stg_programas') }}
 )
 
 , orcamento_despesa as (
-    select *
+    select distinct
+        codigo_funcao
+        , codigo_programa
+        , codigo_projeto_atividade
+        , nome_projeto_atividade
+        , municipio_id
+        , ano_exercicio
     from {{ ref('stg_orcamento_despesa') }}
 )
 
 , final as (
     select
-        fnc.codigo_funcao
-        , fnc.descricao_funcao as nome_funcao
-        , prg.codigo_programa
+        orc.codigo_funcao
+        , fnc.nome_funcao
+        , orc.codigo_programa
+        , prg.nome_programa
         , orc.codigo_projeto_atividade
-        , orc.descricao_projeto_atividade as nome_projeto_atividade
-        , prg.ano_exercicio
-        , prg.municipio_id
-        , coalesce(prg.descricao_programa, 'Programa ' || prg.codigo_programa) as nome_programa
-    from programas as prg
+        , orc.nome_projeto_atividade
+        , orc.municipio_id
+        , orc.ano_exercicio
+    from orcamento_despesa as orc
     left join funcoes as fnc
-        on prg.codigo_programa = fnc.codigo_funcao
-    left join orcamento_despesa as orc
+        on orc.codigo_funcao = fnc.codigo_funcao
+    left join programas as prg
         on
-            prg.municipio_id = orc.municipio_id
-            and prg.ano_exercicio = orc.ano_exercicio
+            orc.codigo_programa = prg.codigo_programa
+            and orc.municipio_id = prg.municipio_id
+            and orc.ano_exercicio = prg.ano_exercicio
 )
 
 select * from final

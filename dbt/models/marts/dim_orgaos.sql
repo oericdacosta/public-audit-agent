@@ -9,7 +9,7 @@ orgaos as (
         municipio_id
         , nome_municipio
         , uf
-    from {{ ref('stg_municipios') }}
+    from {{ ref('dim_municipios') }}
 )
 
 , final as (

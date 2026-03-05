@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: fct_licitacoes
+    description: >
+      Fato de licitações com atributos de conformidade e competitividade.
+      Uma linha por processo licitatório. Seletor fino sobre int_licitacoes_enriched.
+      Para análise de risco consolidada com score e desvios de valor, prefira fct_licitacoes_risco.
+      Granularidade: uma linha por licitacao_id.
+
+      LIMITAÇÃO CONHECIDA — ausência de FK na fonte TCE-CE:
+      Não existe ligação entre licitações e contratos (fct_contratos) nem entre licitações
+      e despesas (fct_despesas) nos dados fornecidos pela API. Não é possível responder
+      "qual licitação originou este contrato?" ou "qual licitação gerou este empenho?".
+    columns:
+      - name: licitacao_id
+        description: "Chave primária da licitação."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: numero_licitacao
+        description: "Número do processo licitatório."
+      - name: ano_exercicio
+        description: "Ano de exercício."
+      - name: data_realizacao
+        description: "Data de realização da licitação."
+      - name: modalidade_licitacao
+        description: "Código da modalidade."
+      - name: modalidade_licitacao_label
+        description: "Rótulo legível: 'Convite', 'Tomada de Preços', 'Concorrência', 'Pregão', 'Dispensa de Licitação', etc."
+      - name: is_dispensa
+        description: "Verdadeiro quando a modalidade é Dispensa ou Inexigibilidade."
+      - name: valor_estimado
+        description: "Valor estimado pelo órgão para o objeto licitado em R$."
+      - name: valor_total_vencedor
+        description: "Soma dos valores dos itens vencedores em R$."
+      - name: faixa_valor
+        description: "Faixa de valor estimado: 'acima de R$650k', 'R$100k a R$650k', 'até R$100k', 'não informado'."
+      - name: quantidade_licitantes
+        description: "Número de empresas que participaram da licitação."
+      - name: flag_licitacao_deserta
+        description: "Verdadeiro quando nenhum licitante participou."
+      - name: flag_unico_participante
+        description: "Verdadeiro quando apenas um licitante participou."
+      - name: updated_at
+        description: "Timestamp da última atualização."

@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: dim_classificacao_orcamentaria
+    description: >
+      Dimensão da hierarquia orçamentária completa: Função → Programa →
+      Projeto/Atividade. Permite ao agente navegar a estrutura funcional-programática
+      do orçamento. Use para listar programas de governo ou entender em que área
+      cada despesa foi classificada.
+      Chave surrogate: classificacao_sk.
+    columns:
+      - name: classificacao_sk
+        description: "Chave surrogate hash de (codigo_funcao, codigo_programa, codigo_projeto_atividade, municipio_id, ano_exercicio)."
+        tests: [unique, not_null]
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal."
+      - name: codigo_funcao
+        description: "Código da função orçamentária (ex: 10 = Saúde, 12 = Educação)."
+      - name: nome_funcao
+        description: "Nome da função orçamentária (ex: Saúde, Educação, Segurança Pública)."
+      - name: codigo_programa
+        description: "Código do programa dentro da função."
+      - name: nome_programa
+        description: "Nome do programa governamental."
+      - name: codigo_projeto_atividade
+        description: "Código do projeto ou atividade dentro do programa."
+      - name: nome_projeto_atividade
+        description: "Descrição do projeto ou atividade orçamentária."
+      - name: hierarquia_completa
+        description: "Caminho completo concatenado para busca textual: 'Saúde > Atenção Básica > Programa de Vacinação'."

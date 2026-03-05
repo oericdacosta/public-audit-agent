@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: dim_fornecedores
+    description: >
+      Dimensão de fornecedores (empresas e pessoas físicas) que celebraram contratos
+      ou participaram de licitações. Seletor fino sobre int_fornecedores_enriquecido.
+      Toda a lógica de enriquecimento, cálculo de porte e flags de risco está na
+      camada intermediária. Chave natural: nome_negociante.
+    columns:
+      - name: nome_negociante
+        description: "Nome do fornecedor/empresa/pessoa física. Chave natural da dimensão."
+        tests: [unique, not_null]
+      - name: documento_negociante
+        description: "CPF ou CNPJ do fornecedor. Pode ser nulo quando a fonte não informa."
+      - name: is_pessoa_juridica
+        description: "Verdadeiro quando o documento possui 14 dígitos (CNPJ)."
+      - name: tipo_pessoa
+        description: "Classificação: 'Pessoa Jurídica', 'Pessoa Física' ou 'Não identificado'."
+      - name: total_contratos
+        description: "Quantidade total de contratos distintos celebrados pelo fornecedor."
+      - name: contratos_ativos
+        description: "Quantidade de contratos atualmente dentro do período de vigência."
+      - name: contratos_vencidos
+        description: "Quantidade de contratos com vigência expirada."
+      - name: valor_total_contratos
+        description: "Soma de todos os valores de contratos do fornecedor em R$."
+      - name: maior_contrato_valor
+        description: "Valor do maior contrato individual celebrado pelo fornecedor."
+      - name: municipios_contratantes
+        description: "Número de municípios distintos onde o fornecedor possui contratos."
+      - name: primeiro_contrato_em
+        description: "Data do contrato mais antigo do fornecedor."
+      - name: ultimo_contrato_em
+        description: "Data do contrato mais recente do fornecedor."
+      - name: total_licitacoes_participou
+        description: "Número de licitações em que o fornecedor participou como licitante."
+      - name: flag_contratado_sem_licitacao
+        description: "Verdadeiro quando o fornecedor possui contratos mas não participou de nenhuma licitação."
+      - name: porte_fornecedor
+        description: "Classificação por volume contratado: 'Grande (> R$1M)', 'Médio (R$100k–R$1M)', 'Pequeno (< R$100k)', 'Não informado'."

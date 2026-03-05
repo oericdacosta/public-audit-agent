@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: dim_orgaos
+    description: >
+      Dimensão de órgãos municipais por ano de exercício. Um órgão pode ter
+      nomes diferentes ao longo dos anos (reorganizações administrativas), por isso
+      a granularidade inclui o ano. Use para listar todos os órgãos de um município
+      sem filtrar por despesa ou receita.
+      Chave surrogate: orgao_sk. Chave natural: (codigo_orgao, municipio_id, ano_exercicio).
+    columns:
+      - name: orgao_sk
+        description: "Chave surrogate gerada por hash de (codigo_orgao, municipio_id, ano_exercicio)."
+        tests: [unique, not_null]
+      - name: codigo_orgao
+        description: "Código do órgão na classificação orçamentária municipal."
+      - name: nome_orgao
+        description: "Nome descritivo do órgão (ex: Secretaria Municipal de Saúde)."
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: uf
+        description: "Estado do município."
+      - name: ano_exercicio
+        description: "Ano de exercício fiscal ao qual o órgão se refere."

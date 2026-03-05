@@ -1,15 +1,14 @@
 with
 source_data as (
     select *
-    from {{ ref('stg_municipios') }}
+    from {{ ref('seed_entidades') }}
 )
 
 , final as (
     select
         municipio_id
-        , codigo_municipio
         , nome_municipio
-        , updated_at
+        , uf
     from source_data
 )
 

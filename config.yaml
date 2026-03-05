@@ -26,6 +26,7 @@ agent:
   fiscal_model: "gpt-4o"  # SQL specialist model
   planner_model: "gpt-4o"  # Planning agent model
   guardrail_model: "gpt-4o-mini"  # Safety check model (cost-effective)
+  editor_model: "gpt-4o-mini"  # Narrative formatting agent (cost-effective)
   max_retries: 3
   recursion_limit: 30  # Max workflow iterations
 

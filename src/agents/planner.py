@@ -42,7 +42,7 @@ def planner(state: AgentState) -> dict[str, Any]:
     planner_prompt = load_prompt("planner.md")
 
     # Use config-driven model for planning
-    llm = get_llm("planner_model")
+    llm = get_llm("planner_model", timeout=60)
 
     chain = (
         ChatPromptTemplate.from_messages(

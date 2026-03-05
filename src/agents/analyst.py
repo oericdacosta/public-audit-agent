@@ -42,7 +42,7 @@ def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) ->
     Returns:
         Generated Python code as a string.
     """
-    llm = get_llm("analyst_model")
+    llm = get_llm("analyst_model", timeout=90)
 
     system_instructions = _build_prompt()
 
@@ -125,22 +125,17 @@ def critique(state: AgentState) -> dict[str, str]:
         Updated state with critic's evaluation.
     """
     logger.debug("NODE: CRITIC")
-    code = state["code"]
-    messages = state["messages"]
+    code = state["code"] or ""
 
-    # Find the last user message to evaluate against
-    user_question = "Unknown question"
-    for m in reversed(messages):
-        if isinstance(m, HumanMessage):
-            user_question = str(m.content)
-            break
+    # Use the original user question stored at guardrail time.
+    # Do NOT scan messages backwards — after the first REJECT, generate() appends
+    # a HumanMessage with critic feedback, which would become the "question" and
+    # cause the critic to review code against the wrong prompt on retry passes.
+    user_question = state.get("user_question") or "Unknown question"
 
-    # Import here to avoid circular dependency
-    from src.agents.critic import CriticAgent
+    from src.agents.critic import review_code
 
-    critic = CriticAgent()
-    # type: ignore[arg-type]
-    evaluation = critic.review_code(user_question, code)  # type: ignore
+    evaluation = review_code(user_question, code)
     logger.debug("Critic Verdict: %s", evaluation)
 
     return {"evaluation": evaluation}
@@ -161,7 +156,7 @@ def execute(state: AgentState) -> dict[str, Optional[str]]:
     code = state["code"]
     logger.debug("EXECUTING CODE:\n%s\n----------------", code)
 
-    sandbox = DockerSandbox()
+    sandbox = DockerSandbox.get_instance()
     result = sandbox.execute(code)  # type: ignore
 
     if (
@@ -174,20 +169,65 @@ def execute(state: AgentState) -> dict[str, Optional[str]]:
     return {"output": result, "error": None}
 
 
+@observe_node(event_type="TOOL_CALL")
+def simple_execute(state: AgentState) -> dict[str, Any]:
+    """
+    Execute a pre-validated SQL query directly without Python code generation.
+
+    Used for simple single-aggregation queries to bypass the full analyst pipeline
+    (generate Python → critic → Docker sandbox), saving ~3.7s and ~2 LLM calls.
+
+    Returns:
+        Updated state with SQL result as output.
+    """
+    import json
+
+    from src.tools.sql import query_sql
+
+    logger.debug("NODE: SIMPLE_EXECUTE")
+    sql_query = state.get("sql_query") or ""
+    logger.debug("SIMPLE EXECUTE SQL: %s", sql_query)
+
+    result = query_sql(sql_query)
+    if isinstance(result, str):
+        output = result
+    elif isinstance(result, list):
+        # Sanitize NaN/Inf floats → None so JSON is always valid
+        sanitized = []
+        for row in result:
+            if isinstance(row, dict):
+                sanitized.append(
+                    {
+                        k: (None if isinstance(v, float) and not (v == v) else v)
+                        for k, v in row.items()
+                    }
+                )
+            else:
+                sanitized.append(row)
+        output = json.dumps(sanitized, ensure_ascii=False)
+    else:
+        output = json.dumps(result, ensure_ascii=False)
+    return {"output": output, "error": None}
+
+
 def should_continue(state: AgentState) -> str:
     """
     Determine whether to continue the generate-critique loop.
+
+    Returns one of three values:
+    - "generate": REJECT with retries remaining → regenerate code
+    - "execute": APPROVE → run the code in sandbox
+    - "abort": REJECT at max_retries → skip execution, go to output
 
     Args:
         state: Current agent state with iteration count and any errors.
 
     Returns:
-        Either "generate" to retry or END to finish.
+        "generate", "execute", or "abort".
     """
     settings = get_settings()
     max_retries = settings.get("agent", {}).get("max_retries", 3)
 
-    error = state.get("error")
     evaluation = state.get("evaluation")
     iterations = state.get("iterations")
 
@@ -196,16 +236,11 @@ def should_continue(state: AgentState) -> str:
             logger.debug("DECISION: REJECTED -> RETRY (%d/%d)", iterations, max_retries)
             return "generate"
         else:
-            logger.debug("DECISION: MAX RETRIES (CRITIC)")
-            return END
+            logger.debug("DECISION: MAX RETRIES REACHED -> ABORT")
+            return "abort"
 
-    if error:
-        if iterations < max_retries:
-            logger.debug("DECISION: ERROR -> RETRY (%d/%d)", iterations, max_retries)
-            return "generate"
-
-    logger.debug("DECISION: END")
-    return END
+    logger.debug("DECISION: APPROVED -> EXECUTE")
+    return "execute"
 
 
 def check_execution(state: AgentState) -> str:
@@ -228,4 +263,4 @@ def check_execution(state: AgentState) -> str:
         logger.debug("DECISION: EXEC ERROR -> RETRY (%d/%d)", iterations, max_retries)
         return "generate"
 
-    return END
+    return cast(str, END)

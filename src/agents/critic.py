@@ -1,62 +1,50 @@
 """
 Critic Agent.
 
-Reviewer agent that validates the Analyst's code before execution.
+Reviewer function that validates the Analyst's code before execution.
+Uses load_prompt() with cache to avoid repeated disk reads.
 """
 
 import logging
-from pathlib import Path
 from typing import cast
 
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.utils.llm import get_llm
+from src.utils.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
 
 
-class CriticAgent:
+def review_code(question: str, code: str) -> str:
     """
-    Reviewer agent that validates the Analyst's code BEFORE execution.
+    Review generated code for correctness and safety.
 
-    Checks for:
-    1. Alignment with user question (e.g., correct year, correct filters).
-    2. Safety (no dangerous commands).
-    3. Completeness (uses print to show results).
+    Uses the critic_system.md prompt (loaded with cache) to evaluate
+    the code against the user's question before sandbox execution.
+
+    Args:
+        question: The original user question the code is meant to answer.
+        code: The generated Python code to review.
+
+    Returns:
+        Review verdict: "APPROVE" or "REJECT: <reason>".
     """
+    llm = get_llm("critic_model", timeout=30)
+    system_instructions = load_prompt("critic_system.md")
 
-    def __init__(self) -> None:
-        """Initialize the CriticAgent with configured LLM."""
-        self.llm = get_llm("critic_model")
-        self.prompt = self._build_prompt()
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system_instructions),
+            (
+                "user",
+                "User Question: {question}\n\nGenerated Code:\n```python\n{code}\n```",
+            ),
+        ]
+    )
 
-    def _build_prompt(self) -> ChatPromptTemplate:
-        """Build the critic prompt template."""
-        prompt_path = Path(__file__).parent.parent / "prompts" / "critic_system.md"
-        system_instructions = prompt_path.read_text(encoding="utf-8")
-
-        return ChatPromptTemplate.from_messages(
-            [
-                ("system", system_instructions),
-                (
-                    "user",
-                    "User Question: {question}\n\n"
-                    "Generated Code:\n```python\n{code}\n```",
-                ),
-            ]
-        )
-
-    def review_code(self, question: str, code: str) -> str:
-        """
-        Review generated code for correctness and safety.
-
-        Args:
-            question: The original user question.
-            code: The generated Python code to review.
-
-        Returns:
-            Review verdict (APPROVE or REJECT with feedback).
-        """
-        chain = self.prompt | self.llm
-        response = chain.invoke({"question": question, "code": code})
-        return cast(str, response.content).strip()
+    chain = prompt | llm
+    response = chain.invoke({"question": question, "code": code})
+    verdict = cast(str, response.content).strip()
+    logger.debug("Critic verdict: %s", verdict[:100])
+    return verdict

@@ -14,7 +14,7 @@ source_data as (
         cast(id as varchar) as funcao_id
         , cast(codigo_funcao as varchar) as codigo_funcao
         , cast(
-            coalesce(descricao_funcao, json_extract_string(raw_data, '$.nome_funcao'))
+            trim(coalesce(descricao_funcao, json_extract_string(raw_data, '$.nome_funcao')))
             as varchar
         ) as descricao_funcao
         , cast(updated_at as timestamp) as updated_at

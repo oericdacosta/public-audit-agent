@@ -39,7 +39,14 @@ GENERATE_SQL_PROMPT = (
     "8. RETURN ONLY THE RAW SQL. No markdown blocks, no 'Here is the code'. "
     "Just the SQL string.\n"
     "9. INTEGER COLUMNS: Do NOT quote numeric literals — use ano_exercicio = 2024, "
-    "NOT ano_exercicio = '2024'. Only quote VARCHAR/TEXT values.\n\n"
+    "NOT ano_exercicio = '2024'. Only quote VARCHAR/TEXT values.\n"
+    "10. DATA QUALITY: When the query aggregates monetary values "
+    "(empenhado/liquidado/pago) filtered by BOTH ano_exercicio AND nome_funcao, "
+    "always add a LEFT JOIN to agg_data_quality ON municipio_id, ano_exercicio, "
+    "AND LOWER(nome_funcao) = LOWER(nome_funcao), "
+    "and SELECT status_qualidade AND explicacao_qualidade from it. "
+    "This lets the user understand whether zero values are real "
+    "or a source publication lag.\n\n"
     "Schema Context:\n"
     "{schema_context}"
 )
@@ -70,79 +77,14 @@ def list_tables_node(state: AgentState) -> dict[str, Any]:
     return {"table_list": tables}
 
 
-# Domain vocabulary → mart tables mapping.
-# Maps words a user would naturally say to the mart tables that answer them.
-_DOMAIN_TABLE_MAP: dict[str, list[str]] = {
-    # Spending / expenses
-    "gasto": ["fct_despesas"],
-    "gastos": ["fct_despesas"],
-    "despesa": ["fct_despesas"],
-    "despesas": ["fct_despesas"],
-    "empenho": ["fct_despesas"],
-    "empenhos": ["fct_despesas"],
-    "liquidado": ["fct_despesas"],
-    "pago": ["fct_despesas"],
-    "pagamento": ["fct_despesas"],
-    "pagamentos": ["fct_despesas"],
-    # Revenue
-    "receita": ["fct_receitas"],
-    "receitas": ["fct_receitas"],
-    "arrecadado": ["fct_receitas"],
-    "arrecadação": ["fct_receitas"],
-    # Budget functions / categories — use aggregated tables
-    "educação": ["agg_despesas_por_funcao_ano", "fct_despesas"],
-    "educacao": ["agg_despesas_por_funcao_ano", "fct_despesas"],
-    "saúde": ["agg_despesas_por_funcao_ano", "fct_despesas"],
-    "saude": ["agg_despesas_por_funcao_ano", "fct_despesas"],
-    "administração": ["agg_despesas_por_funcao_ano", "fct_despesas"],
-    "administracao": ["agg_despesas_por_funcao_ano", "fct_despesas"],
-    "função": ["agg_despesas_por_funcao_ano"],
-    "funcao": ["agg_despesas_por_funcao_ano"],
-    "programa": ["dim_classificacao_orcamentaria", "fct_despesas"],
-    "programas": ["dim_classificacao_orcamentaria"],
-    "orçamento": ["dim_classificacao_orcamentaria", "agg_resultado_fiscal_mensal"],
-    "orcamento": ["dim_classificacao_orcamentaria", "agg_resultado_fiscal_mensal"],
-    "resultado fiscal": ["agg_resultado_fiscal_mensal"],
-    # Bidding / procurement
-    "licitação": ["fct_licitacoes", "fct_licitacoes_risco"],
-    "licitações": ["fct_licitacoes", "fct_licitacoes_risco"],
-    "licitacao": ["fct_licitacoes"],
-    "pregão": ["fct_licitacoes"],
-    "dispensa": ["fct_licitacoes"],
-    "concorrência": ["fct_licitacoes"],
-    "licitante": ["brd_licitantes"],
-    "licitantes": ["brd_licitantes"],
-    "risco": ["fct_licitacoes_risco"],
-    # Contracts / suppliers
-    "contrato": ["fct_contratos", "fct_contratos_fornecedores"],
-    "contratos": ["fct_contratos", "fct_contratos_fornecedores"],
-    "fornecedor": ["dim_fornecedores", "fct_contratos_fornecedores"],
-    "fornecedores": ["dim_fornecedores", "fct_contratos_fornecedores"],
-    "contratado": ["fct_contratos_fornecedores"],
-    # Org structure
-    "órgão": ["dim_orgaos", "agg_despesas_por_orgao_ano"],
-    "orgao": ["dim_orgaos", "agg_despesas_por_orgao_ano"],
-    "órgãos": ["dim_orgaos"],
-    "orgaos": ["dim_orgaos"],
-    "secretaria": ["dim_orgaos"],
-    "unidade": ["dim_orgaos"],
-    # Public agents / servers
-    "servidor": ["fct_servidores"],
-    "servidores": ["fct_servidores"],
-    "agente": ["fct_servidores"],
-    "agentes": ["fct_servidores"],
-    # Municipality
-    "município": ["dim_municipios"],
-    "municipio": ["dim_municipios"],
-    "cidade": ["dim_municipios"],
-    "municípios": ["dim_municipios"],
-    # Classification / budget structure
-    "classificação": ["dim_classificacao_orcamentaria"],
-    "classificacao": ["dim_classificacao_orcamentaria"],
-}
-
-# Core tables always included when no match is found — minimum viable context
-_CORE_TABLES = ["fct_despesas", "dim_orgaos", "agg_despesas_por_funcao_ano"]
+# Core tables used as fallback when the semantic embedding index is unavailable.
+# This ensures the agent always has a minimal schema context to work with.
+_CORE_TABLES = [
+    "fct_despesas",
+    "dim_orgaos",
+    "agg_despesas_por_funcao_ano",
+    "agg_data_quality",
+]
 
 
 @observe_node(event_type="TOOL_CALL")
@@ -150,12 +92,9 @@ def get_schema_node(state: AgentState) -> dict[str, Any]:
     """
     Fetch schema information for tables relevant to the user question.
 
-    Uses a two-tier strategy (no LLM):
-    1. Domain vocabulary map — matches natural language words (e.g. "educação",
-       "gasto", "licitação") to the tables that answer those questions.
-    2. Table-name keyword match — fallback for table names that appear literally.
-    3. Core tables fallback — always include despesas/funcoes/orgaos when nothing
-       else matches, so the LLM always has a valid schema to work with.
+    Table selection is performed semantically by guardrail_input via embedding
+    similarity (stored in state.selected_tables). Falls back to core tables
+    when the embedding index is unavailable.
 
     Schema is cached in state.schema_context across turns to avoid re-fetching.
 
@@ -169,40 +108,20 @@ def get_schema_node(state: AgentState) -> dict[str, Any]:
         logger.debug("FISCAL: SCHEMA CACHE HIT — skipping DDL fetch")
         return {}
 
-    user_question = (state.get("user_question") or "").lower()
     available_tables = set(state.get("table_list") or _list_mart_tables())
 
-    selected: set[str] = set()
+    # Use semantically selected tables from guardrail_input
+    selected_tables: list[str] = state.get("selected_tables") or []
 
-    # Tier 1 — domain vocabulary map
-    for keyword, tables in _DOMAIN_TABLE_MAP.items():
-        if keyword in user_question:
-            for t in tables:
-                if t in available_tables:
-                    selected.add(t)
+    # Filter to only tables that actually exist in the database
+    selected = [t for t in selected_tables if t in available_tables]
 
-    # Tier 2 — table-name keyword match (covers table names mentioned literally)
-    for table in available_tables:
-        base = (
-            table.replace("fct_", "")
-            .replace("stg_", "")
-            .replace("int_", "")
-            .replace("dim_", "")
-            .replace("agg_", "")
-            .replace("brd_", "")
-            .replace("_", " ")
-        )
-        parts = [p for p in base.split() if len(p) > 3]
-        if any(part in user_question for part in parts):
-            selected.add(table)
-
-    # Tier 3 — fallback to core tables so schema is never empty
+    # Fallback: if no tables were selected (index unavailable), use core tables
     if not selected:
-        for t in _CORE_TABLES:
-            if t in available_tables:
-                selected.add(t)
+        logger.debug("FISCAL: No semantic selection — falling back to core tables")
+        selected = [t for t in _CORE_TABLES if t in available_tables]
 
-    target_tables = list(selected)[:5]
+    target_tables = selected[:6]  # Respect hard cap from embeddings design
     logger.debug("FISCAL: Selected tables for schema: %s", target_tables)
 
     schemas: list[str] = []
@@ -215,7 +134,7 @@ def get_schema_node(state: AgentState) -> dict[str, Any]:
     return {"schema_context": schema_text}
 
 
-@observe_node(event_type="THOUGHT")
+@observe_node(event_type="THOUGHT", model_key="fiscal_model")
 def generate_query_node(state: AgentState) -> dict[str, Optional[str]]:
     """
     Generate SQL query based on user question and schema context.

@@ -1,149 +1,189 @@
 """
-Observability and Logging Utilities.
+Observability Utilities.
 
-Provides structured JSON logging and LangGraph node observability decorator.
+Provides a LangGraph node decorator that ships telemetry to Langfuse.
+Console logging is kept for local visibility at DEBUG level.
 """
 
 import functools
-import json
 import logging
 import time
-import traceback
-import uuid
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 
 from langchain_community.callbacks import get_openai_callback
 
 # --- TYPE VARIABLES ---
 F = TypeVar("F", bound=Callable[..., Any])
 
-# --- CONFIGURATION ---
+# --- LOGGING SETUP ---
 LOG_LEVEL = logging.INFO
-logging.basicConfig(level=LOG_LEVEL, format="%(message)s")
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 logger = logging.getLogger("CivicAudit")
 
 
-class JsonFormatter(logging.Formatter):
-    """Formatter that outputs JSON strings for structured logging."""
+# --- HELPERS ---
 
-    def format(self, record: logging.LogRecord) -> str:
-        """Format the log record as a JSON string."""
-        log_record: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "logger": record.name,
+
+def _build_input_summary(state: dict[str, Any]) -> dict[str, Any]:
+    """Extract relevant input fields from state for Langfuse (no blob fields)."""
+    relevant = ("user_question", "sql_query", "error", "evaluation", "iterations")
+    result: dict[str, Any] = {}
+    for k in relevant:
+        v = state.get(k)
+        if v is None:
+            continue
+        result[k] = v[:500] if isinstance(v, str) and len(v) > 500 else v
+    return result
+
+
+def _build_output_summary(result: Any) -> Any:
+    """Truncate output for Langfuse."""
+    if result is None:
+        return None
+    if isinstance(result, dict):
+        return {
+            k: (v[:500] if isinstance(v, str) and len(v) > 500 else v)
+            for k, v in result.items()
         }
-
-        # Merge extra fields
-        if hasattr(record, "structured_data"):
-            log_record.update(record.structured_data)
-
-        return json.dumps(log_record)
-
-
-# Configure the root logger to use JSON formatting
-_handlers: list[logging.Handler] = []
-
-# Console Handler
-_stream_handler = logging.StreamHandler()
-_stream_handler.setFormatter(JsonFormatter())
-_handlers.append(_stream_handler)
-
-# File Handler
-_log_dir = Path(__file__).parent.parent.parent / "logs"
-_log_dir.mkdir(parents=True, exist_ok=True)
-_file_handler = logging.FileHandler(_log_dir / "agent_trace.jsonl")
-_file_handler.setFormatter(JsonFormatter())
-_handlers.append(_file_handler)
-
-# Update the existing logger
-if logger.hasHandlers():
-    logger.handlers = []
-for h in _handlers:
-    logger.addHandler(h)
-logger.setLevel(LOG_LEVEL)
+    s = str(result)
+    return s[:1000] if len(s) > 1000 else s
 
 
 # --- OBSERVABILITY DECORATOR ---
 
 
-def observe_node(event_type: str = "NODE_EXECUTION") -> Callable[[F], F]:
+def observe_node(
+    event_type: str = "NODE_EXECUTION", model_key: Optional[str] = None
+) -> Callable[[F], F]:
     """
-    Decorator to wrap LangGraph nodes with observability logic.
+    Decorator that wraps LangGraph nodes with Langfuse observability.
 
-    Captures input, output, latency, and token usage for each node execution.
+    Creates a Langfuse span (TOOL_CALL / GUARDRAIL) or generation (THOUGHT)
+    for each node execution, linked to the parent trace via state["trace_id"].
+    If Langfuse is not configured, the node executes normally with no side effects.
 
     Args:
-        event_type: Type of event to log (e.g., "THOUGHT", "TOOL_CALL").
-
-    Returns:
-        Decorated function with observability.
+        event_type: "THOUGHT" (LLM call), "TOOL_CALL", or "GUARDRAIL".
+        model_key: Config key for the LLM model (e.g. "fiscal_model").
+                   Required for THOUGHT nodes so Langfuse can log the model name.
     """
 
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
+            from src.utils.langfuse_client import get_langfuse_client
+
+            lf = get_langfuse_client()
+            trace_id: Optional[str] = state.get("trace_id")
+            root_span_id: Optional[str] = state.get("root_span_id")
+
             start_time = time.perf_counter()
-            trace_id = state.get("trace_id", str(uuid.uuid4()))
-            span_id = str(uuid.uuid4())
-
-            # Capture Input (Sanitized)
-            input_summary = str(state)
-            if len(input_summary) > 2000:
-                input_summary = input_summary[:2000] + "... [TRUNCATED]"
-
-            result = None
             status = "SUCCESS"
-            error = None
-            output_summary = ""
-            token_usage: dict[str, Any] = {}
+            error_msg: Optional[str] = None
+            span = None
 
+            # Token counters — always defined so finally block can reference them
+            total_tokens = prompt_tokens = completion_tokens = 0
+            total_cost = 0.0
+
+            # --- Create Langfuse span or generation ---
+            if lf and trace_id:
+                try:
+                    from langfuse.types import TraceContext
+
+                    ctx = TraceContext(trace_id=trace_id)
+                    if root_span_id:
+                        ctx = TraceContext(
+                            trace_id=trace_id, parent_span_id=root_span_id
+                        )
+
+                    input_data = _build_input_summary(state)
+
+                    iteration = state.get("iterations", 0)
+
+                    if event_type == "THOUGHT":
+                        from src.config import get_settings
+
+                        settings = get_settings()
+                        model_name = (
+                            settings.get("agent", {}).get(model_key, "unknown")
+                            if model_key
+                            else "unknown"
+                        )
+                        span = lf.start_generation(
+                            name=func.__name__,
+                            model=model_name,
+                            input=input_data,
+                            trace_context=ctx,
+                            metadata={
+                                "event_type": event_type,
+                                "iteration": iteration,
+                                "is_retry": iteration > 0,
+                            },
+                        )
+                    else:
+                        span = lf.start_span(
+                            name=func.__name__,
+                            input=input_data,
+                            trace_context=ctx,
+                            metadata={"event_type": event_type},
+                        )
+                except Exception as lf_err:
+                    logger.debug("Langfuse span creation error: %s", lf_err)
+
+            # --- Execute node ---
+            result = None
             try:
-                # Execute Node with Token Tracking
                 with get_openai_callback() as cb:
                     result = func(state, *args, **kwargs)
-                    token_usage = {
-                        "total_tokens": cb.total_tokens,
-                        "prompt_tokens": cb.prompt_tokens,
-                        "completion_tokens": cb.completion_tokens,
-                        "total_cost": cb.total_cost,
-                    }
-
-                # Capture Output
-                output_summary = str(result)
-                if len(output_summary) > 2000:
-                    output_summary = output_summary[:2000] + "... [TRUNCATED]"
-
+                total_tokens = cb.total_tokens
+                prompt_tokens = cb.prompt_tokens
+                completion_tokens = cb.completion_tokens
+                total_cost = cb.total_cost
             except Exception as e:
                 status = "ERROR"
-                error = str(e)
-                output_summary = traceback.format_exc()
+                error_msg = str(e)
                 raise
             finally:
-                end_time = time.perf_counter()
-                latency_ms = (end_time - start_time) * 1000
+                latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
-                # Log Structured Event
-                log_data: dict[str, Any] = {
-                    "trace_id": trace_id,
-                    "span_id": span_id,
-                    "event_type": event_type,
-                    "component": func.__name__,
-                    "status": status,
-                    "latency_ms": round(latency_ms, 2),
-                    "tokens": token_usage,
-                    "input": input_summary,
-                    "output": output_summary,
-                }
+                # --- Finalise Langfuse span ---
+                if span:
+                    try:
+                        span.update(
+                            output=_build_output_summary(result),
+                            metadata={
+                                "event_type": event_type,
+                                "latency_ms": latency_ms,
+                                "status": status,
+                                "cost_usd": total_cost,
+                            },
+                            level="ERROR" if status == "ERROR" else "DEFAULT",
+                            status_message=error_msg,
+                        )
+                        if event_type == "THOUGHT" and total_tokens > 0:
+                            span.update(
+                                usage_details={
+                                    "input": prompt_tokens,
+                                    "output": completion_tokens,
+                                    "total": total_tokens,
+                                },
+                                cost_details={"total": total_cost},
+                            )
+                        span.end()
+                    except Exception as lf_err:
+                        logger.debug("Langfuse span end error: %s", lf_err)
 
-                if error:
-                    log_data["error"] = error
-
-                logger.info(
-                    "Executed %s", func.__name__, extra={"structured_data": log_data}
+                logger.debug(
+                    "node=%s status=%s latency=%.0fms tokens=%d cost=$%.4f",
+                    func.__name__,
+                    status,
+                    latency_ms,
+                    total_tokens,
+                    total_cost,
                 )
 
             return result

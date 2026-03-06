@@ -67,7 +67,7 @@ def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) ->
 # --- NODE FUNCTIONS ---
 
 
-@observe_node(event_type="THOUGHT")
+@observe_node(event_type="THOUGHT", model_key="analyst_model")
 def generate(state: AgentState) -> dict[str, Any]:
     """
     Generate Python code based on user question and optional SQL query.
@@ -113,7 +113,7 @@ def generate(state: AgentState) -> dict[str, Any]:
     }
 
 
-@observe_node(event_type="THOUGHT")
+@observe_node(event_type="THOUGHT", model_key="critic_model")
 def critique(state: AgentState) -> dict[str, str]:
     """
     Review generated code using the CriticAgent.

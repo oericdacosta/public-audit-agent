@@ -19,7 +19,6 @@ from langgraph.graph import END
 
 from src.agents.guardrail import _fast_path_verdict, _redact_pii
 from src.graph.workflow import (
-    _MULTI_STEP_KEYWORDS,
     check_guardrail,
     check_sql_generated,
     check_sql_validated,
@@ -61,9 +60,11 @@ class TestCheckGuardrail:
         assert check_guardrail(state) == "list_tables"
 
     def test_safe_complex_query_goes_to_planner(self):
+        # is_complex is set by guardrail_input via embedding similarity
         state = _state(
             guardrail_verdict="SAFE",
             user_question="Compare a evolução das despesas por ano de 2020 a 2024",
+            is_complex=True,
         )
         assert check_guardrail(state) == "planner"
 
@@ -71,6 +72,7 @@ class TestCheckGuardrail:
         state = _state(
             guardrail_verdict="SAFE",
             user_question="Quais são os top 10 fornecedores em receitas?",
+            is_complex=True,
         )
         assert check_guardrail(state) == "planner"
 
@@ -78,6 +80,7 @@ class TestCheckGuardrail:
         state = _state(
             guardrail_verdict="SAFE",
             user_question="Mostre a tendência de gastos em saúde",
+            is_complex=True,
         )
         assert check_guardrail(state) == "planner"
 
@@ -384,12 +387,18 @@ class TestValidateSqlSafetyExpanded:
 
 
 # ---------------------------------------------------------------------------
-# _MULTI_STEP_KEYWORDS coverage
+# Semantic routing via check_guardrail (reads is_complex from state)
 # ---------------------------------------------------------------------------
 
 
-class TestMultiStepKeywords:
-    """Verify the keyword list catches expected complex queries."""
+class TestSemanticRouting:
+    """
+    Verify check_guardrail correctly reads is_complex from state.
+
+    Complexity detection is now performed by guardrail_input via embedding
+    similarity (stored in state.is_complex). These tests verify that the
+    routing function correctly responds to that flag — not keyword matching.
+    """
 
     @pytest.mark.parametrize(
         "question",
@@ -404,10 +413,13 @@ class TestMultiStepKeywords:
             "correlação entre licitações e despesas",
         ],
     )
-    def test_complex_keywords_detected(self, question: str):
-        q = question.lower()
-        assert any(kw in q for kw in _MULTI_STEP_KEYWORDS), (
-            f"Expected '{question}' to be classified as complex"
+    def test_complex_flag_routes_to_planner(self, question: str):
+        """When is_complex=True in state, check_guardrail routes to planner."""
+        state = _state(
+            guardrail_verdict="SAFE", user_question=question, is_complex=True
+        )
+        assert check_guardrail(state) == "planner", (
+            f"Expected complex query to route to planner: '{question}'"
         )
 
     @pytest.mark.parametrize(
@@ -419,8 +431,17 @@ class TestMultiStepKeywords:
             "quantas licitações foram feitas em 2023?",
         ],
     )
-    def test_simple_queries_not_detected(self, question: str):
-        q = question.lower()
-        assert not any(kw in q for kw in _MULTI_STEP_KEYWORDS), (
-            f"Expected '{question}' to be classified as simple"
+    def test_simple_flag_routes_to_list_tables(self, question: str):
+        """When is_complex=False in state, check_guardrail skips the planner."""
+        state = _state(
+            guardrail_verdict="SAFE", user_question=question, is_complex=False
         )
+        assert check_guardrail(state) == "list_tables", (
+            f"Expected simple query to skip planner: '{question}'"
+        )
+
+    def test_missing_is_complex_defaults_to_simple(self):
+        """When is_complex is absent from state (fallback), routes to list_tables."""
+        state = _state(guardrail_verdict="SAFE", user_question="total de despesas")
+        # is_complex not set — defaults to False → skip planner
+        assert check_guardrail(state) == "list_tables"

@@ -1,4 +1,4 @@
-.PHONY: up down restart logs shell clean lint test typecheck format install check security docker-build docker-test ci airflow-up airflow-down airflow-logs airflow-restart airflow-trigger agent-up mcp-up mcp-down
+.PHONY: up down restart logs shell clean lint test typecheck format install check security docker-build docker-test ci airflow-up airflow-down airflow-logs airflow-restart airflow-trigger agent-up mcp-up mcp-down index-catalog
 
 # Project Variables
 COMPOSE = docker compose
@@ -131,6 +131,11 @@ etl:
 	@echo "Running ETL process..."
 	@uv run python -m src.etl.main --municipality $(or $(municipality),162) $(if $(year),--year $(year),)
 	@echo "✅ ETL complete!"
+
+index-catalog:
+	@echo "Building semantic embedding index for table selection..."
+	@uv run python -c "from dotenv import load_dotenv; load_dotenv(); from src.utils.embeddings import build_index; build_index()"
+	@echo "✅ Embedding index built!"
 
 # ──────────────────────────────────────────────────────────
 # Airflow Commands

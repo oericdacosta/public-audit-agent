@@ -31,3 +31,10 @@ class AgentState(_RequiredState, total=False):
     user_question: str  # Original user question extracted at guardrail
     table_list: List[str]  # Tables returned by list_tables_node
     schema_context: str  # Schema DDL returned by get_schema_node
+    # Semantic routing (set by guardrail_input, consumed by check_guardrail
+    # and get_schema_node). Tables chosen by embedding similarity for schema context
+    selected_tables: List[str]
+    is_complex: bool  # True when query similarity to complexity anchors >= threshold
+    # Langfuse observability (set by workflow.run before graph.invoke)
+    trace_id: str  # Langfuse trace ID (32-char hex) — links all node spans
+    root_span_id: str  # Langfuse root span ID (16-char hex) — parent for node spans

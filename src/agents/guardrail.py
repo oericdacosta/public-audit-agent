@@ -179,7 +179,32 @@ def _redact_pii(text: str) -> str:
     return text
 
 
-@observe_node(event_type="GUARDRAIL")
+def _semantic_route(user_input: str) -> dict[str, Any]:
+    """
+    Run semantic table selection and complexity detection for a SAFE query.
+
+    Reads thresholds from config.yaml (embeddings section).
+    Returns a dict with 'selected_tables' and 'is_complex' to merge into state.
+    Never raises — falls back to empty/False if the embedding index is unavailable.
+    """
+    try:
+        from src.config import get_settings
+        from src.utils.embeddings import analyze_question
+
+        cfg = get_settings().get("embeddings", {})
+        selected_tables, is_complex = analyze_question(
+            user_input,
+            top_k=int(cfg.get("top_k", 4)),
+            complexity_threshold=float(cfg.get("complexity_threshold", 0.62)),
+            min_score=float(cfg.get("min_table_score", 0.30)),
+        )
+        return {"selected_tables": selected_tables, "is_complex": is_complex}
+    except Exception as e:
+        logger.warning("Semantic routing failed (index may not be built): %s", e)
+        return {"selected_tables": [], "is_complex": False}
+
+
+@observe_node(event_type="GUARDRAIL", model_key="guardrail_model")
 def guardrail_input(state: AgentState) -> dict[str, Any]:
     """
     Validate user input for safety and relevance.
@@ -203,7 +228,11 @@ def guardrail_input(state: AgentState) -> dict[str, Any]:
     fast_verdict = _fast_path_verdict(user_input)
     if fast_verdict == "SAFE":
         logger.debug("GUARDRAIL: fast-path SAFE")
-        return {"guardrail_verdict": "SAFE", "user_question": user_input}
+        return {
+            "guardrail_verdict": "SAFE",
+            "user_question": user_input,
+            **_semantic_route(user_input),
+        }
     if fast_verdict == "UNSAFE":
         logger.warning("GUARDRAIL: fast-path UNSAFE: %s", user_input[:100])
         return {
@@ -241,7 +270,11 @@ def guardrail_input(state: AgentState) -> dict[str, Any]:
             ),
         }
 
-    return {"guardrail_verdict": "SAFE", "user_question": user_input}
+    return {
+        "guardrail_verdict": "SAFE",
+        "user_question": user_input,
+        **_semantic_route(user_input),
+    }
 
 
 @observe_node(event_type="GUARDRAIL")

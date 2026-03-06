@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: agg_orcamento_por_funcao_ano
+    description: >
+      Agregacao anual de orcamento LOA por funcao, com comparacao de execucao.
+      Permite responder "quanto foi previsto vs executado em Educacao em 2024?".
+      Granularidade: uma linha por (municipio_id, ano_exercicio, codigo_funcao).
+    columns:
+      - name: municipio_id
+        description: "Chave numérica do município (FK para dim_municipios). NÃO use para filtrar por nome de cidade."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado, ex: Sobral). Use este campo para filtrar por cidade."
+      - name: ano_exercicio
+        description: "Ano fiscal."
+      - name: codigo_funcao
+        description: "Codigo da funcao orcamentaria."
+      - name: nome_funcao
+        description: "Nome da funcao (ex: Educacao, Saude, Cultura)."
+      - name: total_fixado_loa
+        description: "Total fixado na LOA para a funcao no ano em R$."
+      - name: total_empenhado_ano
+        description: "Total empenhado na execucao orcamentaria em R$."
+      - name: total_liquidado_ano
+        description: "Total liquidado em R$."
+      - name: total_pago_ano
+        description: "Total pago em R$."
+      - name: percentual_empenhado_loa
+        description: "Percentual empenhado em relacao ao LOA fixado."
+      - name: percentual_executado_loa
+        description: "Percentual pago em relacao ao LOA fixado."
+      - name: saldo_orcamentario
+        description: "Saldo nao empenhado do LOA em R$ (fixado - empenhado)."
+      - name: rank_funcao_por_fixado
+        description: "Ranking da funcao por valor fixado no ano (1 = maior orcamento)."
+      - name: rank_funcao_por_executado
+        description: "Ranking da funcao por valor pago no ano (1 = maior execucao)."

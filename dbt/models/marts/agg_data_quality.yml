@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: agg_data_quality
+    description: >
+      Classificacao deterministica de qualidade de dados por (municipio_id, ano_exercicio, nome_funcao).
+      Permite que o agente distinga entre "zero real" e "dado ainda nao publicado pela fonte (TCE-CE)".
+      Sempre faca LEFT JOIN nesta tabela quando consultar valores monetarios filtrados por
+      ano_exercicio E nome_funcao, para incluir status_qualidade e explicacao_qualidade na resposta.
+      Granularidade: uma linha por (municipio_id, ano_exercicio, nome_funcao).
+    columns:
+      - name: municipio_id
+        description: "Chave numérica do município (FK para dim_municipios). NÃO use para filtrar por nome de cidade."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado, ex: Sobral). Use este campo para filtrar por cidade."
+      - name: ano_exercicio
+        description: "Ano fiscal."
+      - name: nome_funcao
+        description: "Nome da funcao orcamentaria (ex: Cultura, Educacao, Saude)."
+      - name: total_registros
+        description: "Total de registros de despesa para esta combinacao."
+      - name: registros_all_zero
+        description: "Numero de registros com empenhado = liquidado = pago = 0."
+      - name: pct_registros_all_zero
+        description: "Percentual de registros com todos os valores zerados."
+      - name: total_empenhado
+        description: "Soma total do valor empenhado."
+      - name: total_pago
+        description: "Soma total do valor pago."
+      - name: anos_com_historico_nao_zero
+        description: "Numero de anos anteriores com execucao nao-nula para esta funcao no municipio."
+      - name: status_qualidade
+        description: >
+          Classificacao de qualidade dos dados:
+          DADOS_CONSOLIDADOS = dados completos e nao-nulos;
+          DADOS_PARCIAIS = alguns zeros, possivelmente ainda em consolidacao;
+          DADOS_POSSIVELMENTE_INCOMPLETOS = todos zeros mas ha historico nao-nulo em anos anteriores (atraso de publicacao TCE-CE);
+          ZERO_SEM_HISTORICO = todos zeros e sem historico anterior (possivel area nova ou sem execucao);
+          SEM_DADOS_ETL = sem registros no banco.
+      - name: explicacao_qualidade
+        description: "Texto explicativo em portugues sobre o status dos dados. Usar literalmente na resposta ao usuario."

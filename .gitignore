@@ -16,6 +16,7 @@ env/
 *.sqlite3
 data/*.duckdb
 data/*.wal
+data/*.json
 
 # IDEs
 .vscode/

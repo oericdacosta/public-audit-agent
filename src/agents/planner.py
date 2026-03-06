@@ -18,7 +18,7 @@ from src.utils.prompts import load_prompt
 logger = logging.getLogger(__name__)
 
 
-@observe_node(event_type="THOUGHT")
+@observe_node(event_type="THOUGHT", model_key="planner_model")
 def planner(state: AgentState) -> dict[str, Any]:
     """
     Create an execution plan based on the user's question.

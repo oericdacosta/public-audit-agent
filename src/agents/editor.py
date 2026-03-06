@@ -18,7 +18,7 @@ from src.utils.prompts import load_prompt
 logger = logging.getLogger(__name__)
 
 
-@observe_node(event_type="THOUGHT")
+@observe_node(event_type="THOUGHT", model_key="editor_model")
 def editor(state: AgentState) -> dict[str, Any]:
     """
     Format raw execution output into a structured Portuguese narrative.

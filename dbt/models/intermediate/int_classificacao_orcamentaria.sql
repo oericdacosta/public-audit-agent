@@ -3,6 +3,7 @@ with funcoes as (
         codigo_funcao
         , descricao_funcao as nome_funcao
     from {{ ref('stg_funcoes') }}
+    qualify row_number() over (partition by codigo_funcao order by updated_at desc) = 1
 )
 
 , programas as (
@@ -15,7 +16,7 @@ with funcoes as (
 )
 
 , orcamento_despesa as (
-    select distinct
+    select
         codigo_funcao
         , codigo_programa
         , codigo_projeto_atividade
@@ -23,6 +24,15 @@ with funcoes as (
         , municipio_id
         , ano_exercicio
     from {{ ref('stg_orcamento_despesa') }}
+    qualify row_number() over (
+        partition by
+            codigo_funcao
+            , codigo_programa
+            , codigo_projeto_atividade
+            , municipio_id
+            , ano_exercicio
+        order by nome_projeto_atividade desc nulls last
+    ) = 1
 )
 
 , final as (

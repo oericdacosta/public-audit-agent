@@ -10,6 +10,9 @@ licitantes as (
         , numero_licitacao
         , municipio_id
     from {{ ref('fct_licitacoes') }}
+    qualify
+        row_number() over (partition by numero_licitacao, municipio_id order by licitacao_id)
+        = 1
 )
 
 , final as (

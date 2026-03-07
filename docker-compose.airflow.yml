@@ -12,12 +12,20 @@ x-airflow-common: &airflow-common
     AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER:-admin}
     AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
     PYTHONPATH: /opt/airflow/app
+    DUCKDB_PATH: /opt/airflow/app/data/civic_audit.duckdb
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+    LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+    MCP_HOST: ${MCP_HOST:-localhost}
+    MCP_PORT: ${MCP_PORT:-8000}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./src:/opt/airflow/app/src
+    - ./dbt:/opt/airflow/app/dbt
     - ./config.yaml:/opt/airflow/app/config.yaml:ro
     - ./data:/opt/airflow/app/data
     - ./logs/airflow:/opt/airflow/logs
+    - /var/run/docker.sock:/var/run/docker.sock
 
 services:
   airflow-postgres:
@@ -43,9 +51,10 @@ services:
       - -c
       - |
         chown -R airflow:0 /opt/airflow/logs &&
+        chmod -R a+rwX /opt/airflow/logs &&
         chmod -R a+rwX /opt/airflow/app/data &&
         su airflow -s /bin/bash -c '
-          pip install --no-cache-dir aiohttp pybreaker duckdb pandas pyyaml &&
+          pip install --no-cache-dir aiohttp pybreaker duckdb pandas pyyaml dbt-duckdb docker pip-audit bandit openai &&
           airflow db migrate &&
           airflow users create \
             --username '"$${AIRFLOW_ADMIN_USER}"' \
@@ -64,7 +73,7 @@ services:
   airflow-webserver:
     <<: *airflow-common
     command: >
-      bash -c "pip install --no-cache-dir aiohttp pybreaker duckdb pandas pyyaml &&
+      bash -c "pip install --no-cache-dir aiohttp pybreaker duckdb pandas pyyaml dbt-duckdb docker pip-audit bandit openai &&
       airflow webserver --port 8080"
     ports:
       - "8080:8080"
@@ -82,7 +91,7 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     command: >
-      bash -c "pip install --no-cache-dir aiohttp pybreaker duckdb pandas pyyaml &&
+      bash -c "pip install --no-cache-dir aiohttp pybreaker duckdb pandas pyyaml dbt-duckdb docker pip-audit bandit openai &&
       airflow scheduler"
     restart: unless-stopped
     depends_on:

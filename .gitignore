@@ -17,6 +17,7 @@ env/
 data/*.duckdb
 data/*.wal
 data/*.json
+data/backups/*
 
 # IDEs
 .vscode/

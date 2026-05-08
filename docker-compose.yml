@@ -16,6 +16,13 @@ services:
       - DOCKER_NETWORK_NAME=public-audit-agent_net
       - MCP_HOST=app # The hostname shim will use to connect back
       - MCP_PORT=8000
+    # Restrict the app container's Linux capabilities.
+    # The docker socket mount is required for sandbox sibling containers —
+    # no Linux capabilities are needed for Unix socket I/O.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     networks:
       - public-audit-agent_net
     restart: unless-stopped

@@ -1,4 +1,4 @@
-from typing import Annotated, List, Optional, TypedDict
+from typing import Annotated, List, Literal, Optional, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -34,7 +34,7 @@ class AgentState(_RequiredState, total=False):
     is_complex: bool  # True when query contains multi-step analytical keywords
     # Data gap detection (set by check_query_node + check_result_integrity)
     data_gap_detected: bool  # True when algorithmic check found a gap
-    gap_reason: Optional[str]  # "column_semantic_mismatch" | "empty_result"
+    gap_reason: Optional[Literal["empty_result", "data_unavailable"]]
     gap_detail: Optional[str]  # Human-readable description of the gap
     gap_alternative: Optional[str]  # Suggested alternative table/approach
     gap_context: Optional[str]  # Pre-formatted context block injected into editor

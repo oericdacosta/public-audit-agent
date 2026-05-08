@@ -75,6 +75,8 @@ class DockerSandbox:
             "mem_limit": "512m",
             "cap_drop": ["ALL"],
             "security_opt": ["no-new-privileges:true"],
+            "read_only": True,
+            "tmpfs": {"/tmp": "size=64m"},  # nosec B108
             "user": "nobody",
             "detach": detach,
             "extra_hosts": {"host.docker.internal": "host-gateway"},

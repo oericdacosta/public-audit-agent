@@ -33,12 +33,20 @@ models:
         description: "Descrição da natureza da receita (ex: IPTU, ISS, Transferências Federais)."
       - name: valor_orcado
         description: "Valor previsto no orçamento para esta receita em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: valor_arrecadado
         description: "Valor efetivamente arrecadado em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: desvio_arrecadacao
         description: "Diferença entre arrecadado e orçado (positivo = superávit, negativo = déficit)."
+        meta:
+          semantic_type: monetary_brl
       - name: percentual_arrecadado
         description: "Percentual arrecadado em relação ao orçado: valor_arrecadado / valor_orcado * 100."
+        meta:
+          semantic_type: ratio
       - name: status_arrecadacao
         description: "Status: 'superavit' (>= 105%), 'dentro_meta' (90-105%), 'abaixo_meta' (< 90%), 'nao_arrecadado', 'sem_meta'."
       - name: is_abaixo_meta

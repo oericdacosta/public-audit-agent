@@ -5,55 +5,100 @@ Model Context Protocol server for exposing database tools to AI assistants.
 """
 
 import asyncio
-from typing import Any, Callable, Optional
+import functools
+from typing import Any, Callable, Optional, Type
 
 import mcp.types as types
 from mcp.server.stdio import stdio_server
+from pydantic import BaseModel, ValidationError
 
 from mcp.server import Server
 
 # Initialize low-level server
 app = Server("civic-audit-mcp")
 
-# Registry for tool handlers
+# Registry for tool handlers (already validates inputs when model is present)
 _TOOL_HANDLERS: dict[str, Callable[..., Any]] = {}
 
 # Registry for internal tool metadata
 _REGISTRY: list[dict[str, Any]] = []
 
 
+# ---------------------------------------------------------------------------
+# Input models — one per tool.  Derive input_schema via model_json_schema().
+# ---------------------------------------------------------------------------
+
+
+class _QuerySqlInput(BaseModel):
+    sql_query: str
+
+
+class _DescribeTableInput(BaseModel):
+    table_name: str
+
+
+class _SearchInput(BaseModel):
+    query: str
+
+
+def _validated_handler(
+    func: Callable[..., Any], model_cls: Type[BaseModel]
+) -> Callable[..., Any]:
+    """Wrap a tool handler to validate its arguments with a Pydantic model."""
+
+    @functools.wraps(func)
+    def wrapper(**kwargs: Any) -> Any:
+        try:
+            validated = model_cls.model_validate(kwargs)
+        except ValidationError as e:
+            return f"Input validation error: {e}"
+        return func(**validated.model_dump())
+
+    return wrapper
+
+
 def register_tool(
     name: str,
     description: str,
-    input_schema: dict[str, Any],
+    input_schema: Optional[dict[str, Any]] = None,
     examples: Optional[list[str]] = None,
     defer_loading: bool = False,
+    input_model: Optional[Type[BaseModel]] = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator to register a function as an MCP tool.
 
+    If input_model is provided, the handler is wrapped with Pydantic validation
+    and input_schema is auto-derived via model_json_schema() when not given.
+
     Args:
         name: Tool name for invocation.
         description: Human-readable description.
-        input_schema: JSON Schema for input parameters.
+        input_schema: JSON Schema for input parameters (auto-derived from model).
         examples: Optional usage examples.
         defer_loading: If True, tool is hidden from initial context.
+        input_model: Optional Pydantic model for argument validation.
 
     Returns:
         Decorator function.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        _TOOL_HANDLERS[name] = func
+        handler = _validated_handler(func, input_model) if input_model else func
+        _TOOL_HANDLERS[name] = handler
 
-        # Inject examples into input_schema for standard compliance
+        schema = input_schema
+        if schema is None and input_model is not None:
+            schema = input_model.model_json_schema()
+        if schema is None:
+            schema = {"type": "object", "properties": {}}
+
+        # Inject examples into schema for standard compliance
         if examples:
-            input_schema["examples"] = examples
+            schema["examples"] = examples
 
         # Create Tool object
-        tool_obj = types.Tool(
-            name=name, description=description, inputSchema=input_schema
-        )
+        tool_obj = types.Tool(name=name, description=description, inputSchema=schema)
 
         # Register with metadata
         _REGISTRY.append(
@@ -127,16 +172,6 @@ def _get_database_tools() -> tuple:
         "Pay attention to data types: quote TEXT values (e.g. '2024') "
         "as seen in the schema."
     ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "sql_query": {
-                "type": "string",
-                "description": "The SQL query to execute",
-            }
-        },
-        "required": ["sql_query"],
-    },
     examples=[
         "SELECT * FROM licitacoes WHERE valor_estimado > 10000 LIMIT 5",
         (
@@ -145,6 +180,7 @@ def _get_database_tools() -> tuple:
         ),
     ],
     defer_loading=True,
+    input_model=_QuerySqlInput,
 )
 def query_sql(sql_query: str) -> str:
     """Execute a SQL query via the database tools."""
@@ -180,12 +216,8 @@ def query_sql(sql_query: str) -> str:
         "IMPORTANT: Read the DDL comments to find numeric codes for categories "
         "(e.g. 10: Saúde)."
     ),
-    input_schema={
-        "type": "object",
-        "properties": {"table_name": {"type": "string"}},
-        "required": ["table_name"],
-    },
     defer_loading=True,
+    input_model=_DescribeTableInput,
 )
 def describe_table(table_name: str) -> str:
     """Get table schema via the database tools."""
@@ -203,13 +235,9 @@ def describe_table(table_name: str) -> str:
         "You MUST read these comments to translate names like 'Saúde' into "
         "numeric codes (e.g. '10') for querying."
     ),
-    input_schema={
-        "type": "object",
-        "properties": {"query": {"type": "string"}},
-        "required": ["query"],
-    },
     examples=["educacao", "saude", "pagamento"],
     defer_loading=False,
+    input_model=_SearchInput,
 )
 def search_definitions(query: str) -> str:
     """Search table definitions via the database tools."""
@@ -223,17 +251,8 @@ def search_definitions(query: str) -> str:
     description=(
         "Searches for available capabilities/tools. Use this to find deferred tools."
     ),
-    input_schema={
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "Capability or keyword (e.g., 'sql', 'table')",
-            }
-        },
-        "required": ["query"],
-    },
     defer_loading=False,
+    input_model=_SearchInput,
 )
 def search_tools(query: str) -> str:
     """Search available tools by keyword."""

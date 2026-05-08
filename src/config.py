@@ -6,11 +6,70 @@ Loads and provides access to application configuration from config.yaml.
 
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import yaml
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.exceptions import ConfigurationError
+
+# ---------------------------------------------------------------------------
+# Typed configuration models — validated at startup, no behavior change for
+# existing call sites (get_settings() still returns dict[str, Any]).
+# ---------------------------------------------------------------------------
+
+
+class _TCESettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    base_url: str
+    sim_base_url: str = ""
+    rate_limit: int = Field(default=5, ge=1)
+    circuit_fail_max: int = Field(default=20, ge=1)
+    circuit_reset_timeout: int = Field(default=30, ge=1)
+
+
+class _AgentSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    analyst_model: str = "gpt-4o"
+    critic_model: str = "gpt-4o-mini"
+    fiscal_model: str = "gpt-4o"
+    planner_model: str = "gpt-4o"
+    guardrail_model: str = "gpt-4o-mini"
+    editor_model: str = "gpt-4o-mini"
+    max_retries: int = Field(default=3, ge=1, le=10)
+    recursion_limit: int = Field(default=30, ge=5)
+
+
+class _DatabaseSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    path: str = "data/civic_audit.duckdb"
+    query_timeout: int = Field(default=30, ge=5, le=300)
+
+
+class _SandboxSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    image: str = "python:3.12-slim"
+    timeout: int = Field(default=30, ge=5, le=120)
+    memory_limit: str = "512m"
+
+
+class _LangfuseSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    host: str = "https://cloud.langfuse.com"
+    flush_at: int = Field(default=15, ge=1)
+    flush_interval: float = Field(default=0.5, gt=0)
+
+
+class _AppSettings(BaseModel):
+    """Top-level configuration model. Validates config.yaml at startup."""
+
+    model_config = ConfigDict(extra="ignore")
+    tce: Optional[_TCESettings] = None
+    agent: _AgentSettings = Field(default_factory=_AgentSettings)
+    database: _DatabaseSettings = Field(default_factory=_DatabaseSettings)
+    sandbox: _SandboxSettings = Field(default_factory=_SandboxSettings)
+    langfuse: _LangfuseSettings = Field(default_factory=_LangfuseSettings)
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +95,20 @@ def load_config() -> dict[str, Any]:
 
     try:
         content = CONFIG_PATH.read_text(encoding="utf-8")
-        return cast(dict[str, Any], yaml.safe_load(content))
+        raw = cast(dict[str, Any], yaml.safe_load(content))
     except yaml.YAMLError as e:
         raise ConfigurationError("Invalid YAML configuration", details=str(e)) from e
+
+    # Validate types at load time — fails early with a clear message.
+    # get_settings() still returns dict[str, Any] for backward compatibility.
+    try:
+        _AppSettings.model_validate(raw)
+    except Exception as e:
+        raise ConfigurationError(
+            "Configuration validation failed", details=str(e)
+        ) from e
+
+    return raw
 
 
 def _initialize_config() -> None:

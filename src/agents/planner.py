@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
 
 from src.schemas.state import AgentState
 from src.utils.llm import get_llm
@@ -16,6 +17,10 @@ from src.utils.logger import observe_node
 from src.utils.prompts import load_prompt
 
 logger = logging.getLogger(__name__)
+
+
+class _PlanOutput(BaseModel):
+    steps: list[str]
 
 
 @observe_node(event_type="THOUGHT", model_key="planner_model")
@@ -44,15 +49,12 @@ def planner(state: AgentState) -> dict[str, Any]:
     # Use config-driven model for planning
     llm = get_llm("planner_model", timeout=60)
 
-    chain = (
-        ChatPromptTemplate.from_messages(
-            [("system", planner_prompt), ("human", "{input}")]
-        )
-        | llm
-    )
+    chain = ChatPromptTemplate.from_messages(
+        [("system", planner_prompt), ("human", "{input}")]
+    ) | llm.with_structured_output(_PlanOutput)
 
-    response = chain.invoke({"input": user_input})
-    plan_text = cast(str, response.content).strip()
+    response = cast(_PlanOutput, chain.invoke({"input": user_input}))
+    plan_text = "\n".join(f"{i + 1}. {step}" for i, step in enumerate(response.steps))
 
     # Append the plan to the message history so the Analyst sees it
     plan_message = HumanMessage(

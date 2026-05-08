@@ -109,11 +109,11 @@ class RevenueCollector(MonthlyCollector):
                     str(year),
                     month_ref,
                     item.get("codigo_orgao"),
-                    item.get("codigo_unidade_orcamentaria"),
-                    item.get("codigo_receita"),
+                    item.get("codigo_unidade"),
+                    item.get("codigo_rubrica"),
                     item.get("descricao_receita"),
-                    item.get("valor_previsto_arrecadacao"),
-                    item.get("valor_arrecadado_no_mes"),
+                    item.get("valor_previsto_orcamento"),
+                    item.get("valor_arrecadacao_ate_mes"),
                     json.dumps(item),
                 )
             )

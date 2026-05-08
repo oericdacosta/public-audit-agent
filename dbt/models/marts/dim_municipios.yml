@@ -11,9 +11,7 @@ models:
       - name: municipio_id
         description: "Chave primária do município (gerada pelo ETL)."
         tests: [unique, not_null]
-      - name: codigo_municipio
-        description: "Código oficial do município no TCE-CE."
       - name: nome_municipio
-        description: "Nome completo do município (ex: Fortaleza, Sobral)."
-      - name: updated_at
-        description: "Timestamp da última atualização do registro."
+        description: "Nome completo do município em minúsculas (ex: fortaleza, sobral)."
+      - name: uf
+        description: "Sigla do estado (UF) do município (ex: CE)."

@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: agg_despesas_pessoal_ano
+    description: >
+      Agregação anual de despesas de pessoal e encargos sociais por órgão.
+      Filtrada sobre fct_despesas onde o elemento de despesa começa com '31'
+      (Pessoal e Encargos Sociais na classificação orçamentária brasileira),
+      incluindo vencimentos, gratificações, férias, 13º e encargos patronais.
+
+      ATENÇÃO: esta tabela expõe o GASTO TOTAL DA FOLHA DE PAGAMENTO do município
+      (despesas liquidadas/pagas em pessoal). Não contém salários individuais de servidores.
+      Para salários individuais, essa informação não está disponível na base TCE-CE.
+
+      Granularidade: uma linha por (municipio_id, ano_exercicio, codigo_orgao, codigo_elemento_despesa).
+    columns:
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: ano_exercicio
+        description: "Ano fiscal."
+      - name: codigo_orgao
+        description: "Código do órgão responsável pelas despesas de pessoal."
+      - name: nome_orgao
+        description: "Nome do órgão (ex: Secretaria Municipal de Educação)."
+      - name: codigo_elemento_despesa
+        description: "Código do elemento de despesa (começa com '31' para pessoal)."
+      - name: total_empenhado_pessoal
+        description: "Total empenhado em despesas de pessoal no ano em R$."
+        meta:
+          semantic_type: monetary_brl
+      - name: total_liquidado_pessoal
+        description: "Total liquidado em despesas de pessoal no ano em R$."
+        meta:
+          semantic_type: monetary_brl
+      - name: total_pago_pessoal
+        description: "Total efetivamente pago em despesas de pessoal no ano em R$."
+        meta:
+          semantic_type: monetary_brl
+      - name: total_registros
+        description: "Número de registros de balancete que compõem o total."
+        meta:
+          semantic_type: count

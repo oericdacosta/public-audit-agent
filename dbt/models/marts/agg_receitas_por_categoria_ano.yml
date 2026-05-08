@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: agg_receitas_por_categoria_ano
+    description: >
+      Agregação anual de receitas por categoria econômica e subcategoria.
+      Permite responder "quanto o município arrecadou de IPTU em 2024?",
+      "qual a participação do FPM na receita total?", "a arrecadação de ISS cresceu?".
+      Granularidade: uma linha por (municipio_id, ano_exercicio, categoria_receita, subcategoria_receita).
+
+      Categorias: Receitas Correntes, Receitas de Capital, etc.
+      Subcategorias identificadas por descrição: IPTU, ISS, FPM, FUNDEB, ICMS, ITBI, IRRF,
+      Transferências SUS, Outras.
+    columns:
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: ano_exercicio
+        description: "Ano fiscal."
+      - name: categoria_receita
+        description: "Categoria econômica da receita (Receitas Correntes, Receitas de Capital, etc.)."
+      - name: subcategoria_receita
+        description: "Subcategoria identificada por padrão de nome: IPTU, ISS, FPM, FUNDEB, ICMS, ITBI, IRRF, Transferências SUS, Outras."
+      - name: total_orcado_ano
+        description: "Total previsto (orçado) para a subcategoria no ano em R$."
+        meta:
+          semantic_type: monetary_brl
+      - name: total_arrecadado_ano
+        description: "Total efetivamente arrecadado na subcategoria no ano em R$."
+        meta:
+          semantic_type: monetary_brl
+      - name: percentual_arrecadado
+        description: "Percentual do valor orçado que foi arrecadado (%)."
+        meta:
+          semantic_type: ratio
+      - name: total_fontes_receita
+        description: "Número de fontes/rubricas de receita distintas na subcategoria."
+        meta:
+          semantic_type: count

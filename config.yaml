@@ -49,13 +49,6 @@ sandbox:
   timeout: 30
   memory_limit: "512m"
 
-# Semantic Table Selection (embeddings-based)
-embeddings:
-  model: "text-embedding-3-small"   # OpenAI embedding model
-  complexity_threshold: 0.62        # Cosine similarity >= this → complex query (activates Planner)
-  min_table_score: 0.30             # Minimum similarity to include a table in schema context
-  top_k: 4                          # Max tables returned (hard cap: 6 with co-includes)
-
 # Langfuse Observability
 langfuse:
   host: "https://cloud.langfuse.com"

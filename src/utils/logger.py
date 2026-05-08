@@ -8,12 +8,23 @@ Console logging is kept for local visibility at DEBUG level.
 import functools
 import logging
 import time
+from enum import Enum
 from typing import Any, Callable, Optional, TypeVar
 
 from langchain_community.callbacks import get_openai_callback
 
 # --- TYPE VARIABLES ---
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+class NodeEventType(str, Enum):
+    """Valid event types for LangGraph node observability spans."""
+
+    THOUGHT = "THOUGHT"
+    TOOL_CALL = "TOOL_CALL"
+    GUARDRAIL = "GUARDRAIL"
+    NODE_EXECUTION = "NODE_EXECUTION"  # legacy default
+
 
 # --- LOGGING SETUP ---
 LOG_LEVEL = logging.INFO

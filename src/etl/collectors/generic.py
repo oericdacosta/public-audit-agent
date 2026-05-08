@@ -25,14 +25,7 @@ NO_PARAMS_ENDPOINTS = frozenset({Endpoint.MUNICIPIOS, Endpoint.FUNCOES})
 # Endpoints that require pagination parameters and looping
 PAGINATED_ENDPOINTS = frozenset(
     {
-        # Detailed transactional data
-        Endpoint.TALOES_RECEITAS,
-        Endpoint.TALOES_EXTRAS,
-        Endpoint.NOTAS_FISCAIS,
-        Endpoint.NOTAS_PAGAMENTOS,
-        Endpoint.ITENS_NOTAS_FISCAIS,
         Endpoint.AGENTES_PUBLICOS,
-        Endpoint.LIQUIDACOES,
         Endpoint.LICITANTES,
         # Dimension/lookup tables (accepts pagination params)
         Endpoint.UNIDADES_ORCAMENTARIAS,

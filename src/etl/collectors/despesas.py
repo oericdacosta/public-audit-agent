@@ -10,9 +10,54 @@ import hashlib
 import json
 import logging
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from src.etl.endpoints import Endpoint
 
 from .base import MonthlyCollector
+
+# ---------------------------------------------------------------------------
+# Pydantic models for the 3 known TCE API response shapes
+# ---------------------------------------------------------------------------
+
+
+class _RspContent(BaseModel):
+    """Inner envelope from shape {"rsp": {"_total": N, "_content": [...]}}."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+    total: int = Field(alias="_total", default=0)
+    content: list[dict] = Field(alias="_content", default_factory=list)
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def normalize_content(cls, v: object) -> list[dict]:
+        if isinstance(v, dict):
+            return [v]
+        if isinstance(v, list):
+            return [r for r in v if isinstance(r, dict)]
+        return []
+
+
+class _RspEnvelope(BaseModel):
+    rsp: _RspContent
+
+
+class _DataDictInner(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    total: int = 0
+    data: list[dict] = Field(default_factory=list)
+
+    @field_validator("data", mode="before")
+    @classmethod
+    def normalize_data(cls, v: object) -> list[dict]:
+        if isinstance(v, list):
+            return [r for r in v if isinstance(r, dict)]
+        return []
+
+
+class _BalanceteEnvelope(BaseModel):
+    balancete_despesa_orcamentaria: list[dict]
+
 
 logger = logging.getLogger(__name__)
 
@@ -114,30 +159,39 @@ class ExpensesCollector(MonthlyCollector):
         return []
 
     def _extract_records_and_total(self, data: dict) -> tuple[list[dict], int]:
-        """Extract records list and total count from API response."""
-        total = 0
-        records: list = []
+        """Extract records list and total count from API response.
 
-        if "rsp" in data and isinstance(data["rsp"], dict):
-            rsp = data["rsp"]
-            total = int(rsp.get("_total", 0))
-            content = rsp.get("_content", [])
-            if isinstance(content, list):
-                records = content
-            elif isinstance(content, dict):
-                records = [content]
-        elif "data" in data:
+        Tries each known TCE API response shape via Pydantic models. Falls back
+        to ([], 0) on unexpected shapes instead of silently returning partial data.
+        """
+        if "rsp" in data:
+            try:
+                envelope = _RspEnvelope.model_validate(data)
+                return envelope.rsp.content, envelope.rsp.total
+            except Exception:
+                pass
+
+        if "data" in data:
             inner = data["data"]
-            if isinstance(inner, dict):
-                total = int(inner.get("total", 0))
-                if "data" in inner:
-                    records = inner["data"] if isinstance(inner["data"], list) else []
-            elif isinstance(inner, list):
-                records = inner
-        elif "balancete_despesa_orcamentaria" in data:
-            records = data["balancete_despesa_orcamentaria"]
+            if isinstance(inner, list):
+                return [r for r in inner if isinstance(r, dict)], 0
+            try:
+                inner_model = _DataDictInner.model_validate(inner)
+                return inner_model.data, inner_model.total
+            except Exception:
+                pass
 
-        return records, total
+        if "balancete_despesa_orcamentaria" in data:
+            try:
+                bal_envelope = _BalanceteEnvelope.model_validate(data)
+                return bal_envelope.balancete_despesa_orcamentaria, 0
+            except Exception:
+                pass
+
+        logger.warning(
+            "Unexpected API response shape — keys: %s", list(data.keys())[:5]
+        )
+        return [], 0
 
     async def _save_all(
         self, all_records: list[dict], municipio_id: str, year: int

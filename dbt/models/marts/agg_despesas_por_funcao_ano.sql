@@ -11,6 +11,17 @@ funcao_ano as (
     from {{ ref('dim_municipios') }}
 )
 
+, quality as (
+    select
+        municipio_id
+        , ano_exercicio
+        , nome_funcao
+        , status_qualidade
+        , explicacao_qualidade
+        , anos_com_historico_nao_zero
+    from {{ ref('agg_data_quality') }}
+)
+
 , final as (
     select
         fan.municipio_id
@@ -24,9 +35,17 @@ funcao_ano as (
         , fan.percentual_executado
         , fan.percentual_orcamento_total
         , fan.rank_funcao_no_ano
+        , q.status_qualidade
+        , q.explicacao_qualidade
+        , q.anos_com_historico_nao_zero
     from funcao_ano as fan
     left join municipios as mun
         on fan.municipio_id = mun.municipio_id
+    left join quality as q
+        on
+            fan.municipio_id = q.municipio_id
+            and fan.ano_exercicio = q.ano_exercicio
+            and fan.nome_funcao = q.nome_funcao
 )
 
 select *

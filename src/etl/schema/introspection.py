@@ -78,6 +78,29 @@ class SchemaIntrospector:
                 schemas[table] = ddl
             return schemas
 
+    def get_compact_schema(self, tables: Optional[list[str]] = None) -> dict[str, str]:
+        """
+        Return compact column listing per table.
+
+        Format: {table_name: "col1 TYPE, col2 TYPE, ..."}
+        Much smaller than full DDL — suitable for passing all mart tables at once.
+
+        Args:
+            tables: Optional list of table names to filter. None returns all tables.
+
+        Returns:
+            Dict mapping table names to compact column strings.
+        """
+        with self._db_manager.get_connection() as conn:
+            all_tables = [row[0] for row in conn.execute("SHOW TABLES").fetchall()]
+            target = [t for t in all_tables if t in tables] if tables else all_tables
+            result = {}
+            for table in target:
+                columns = conn.execute(f"DESCRIBE {table}").fetchall()
+                cols = ", ".join(f"{col[0]} {col[1]}" for col in columns)
+                result[table] = cols
+            return result
+
     def search(self, keyword: str) -> dict[str, str]:
         """
         Search table names and schema definitions for a keyword.

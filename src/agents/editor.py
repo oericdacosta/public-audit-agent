@@ -44,8 +44,14 @@ def editor(state: AgentState) -> dict[str, Any]:
 
     # Build user input for the editor
     user_input = f"**User Question**: {user_question}\n\n**Raw Data**:\n{raw_output}"
+
     if sql_query:
         user_input += f"\n\n**Analysis Summary**: Query SQL executada: `{sql_query}`"
+
+    # Inject algorithmic gap detection signals (if any)
+    gap_context = state.get("gap_context")
+    if gap_context:
+        user_input += f"\n\n{gap_context}"
 
     prompt = ChatPromptTemplate.from_messages(
         [("system", editor_prompt), ("human", "{input}")]
@@ -54,7 +60,6 @@ def editor(state: AgentState) -> dict[str, Any]:
     response = chain.invoke({"input": user_input})
     formatted = cast(str, response.content).strip()
 
-    # ITEM 18 — Append SQL provenance to output
     if sql_query:
         formatted += (
             f"\n\n---\n\n**Proveniencia dos Dados**\n\n```sql\n{sql_query}\n```"

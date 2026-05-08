@@ -31,13 +31,18 @@ def _build_prompt() -> str:
     return load_prompt_components("identity.md", "rules.md", "examples.md")
 
 
-def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) -> str:
+def _generate_code_logic(
+    user_question: str,
+    sql_query: Optional[str] = None,
+    schema_context: str = "",
+) -> str:
     """
     Core logic to generate code using LLM.
 
     Args:
         user_question: The user's question to generate code for.
         sql_query: Optional pre-generated SQL query from Fiscal Agent.
+        schema_context: Compact schema string injected for table/column awareness.
 
     Returns:
         Generated Python code as a string.
@@ -46,8 +51,10 @@ def _generate_code_logic(user_question: str, sql_query: Optional[str] = None) ->
 
     system_instructions = _build_prompt()
 
-    # Inject the SQL from Fiscal Agent if available
+    # Inject compact schema so the analyst knows columns without runtime discovery
     input_text = f"User Question: {user_question}"
+    if schema_context:
+        input_text = f"Available Schema:\n{schema_context}\n\n{input_text}"
     if sql_query:
         input_text += (
             f"\n\nPre-Generated, Validated SQL by Fiscal Agent (USE THIS):\n"
@@ -102,8 +109,9 @@ def generate(state: AgentState) -> dict[str, Any]:
     # Use the pure logic function, avoiding class instantiation loop
     last_message = str(messages[-1].content)
     sql_query = cast(str, state.get("sql_query")) if state.get("sql_query") else None
+    schema_context = state.get("schema_context") or ""
 
-    code = _generate_code_logic(last_message, sql_query)
+    code = _generate_code_logic(last_message, sql_query, schema_context)
 
     return {
         "code": code,
@@ -135,7 +143,9 @@ def critique(state: AgentState) -> dict[str, str]:
 
     from src.agents.critic import review_code
 
-    evaluation = review_code(user_question, code)
+    evaluation = review_code(
+        user_question, code, schema_context=state.get("schema_context") or ""
+    )
     logger.debug("Critic Verdict: %s", evaluation)
 
     return {"evaluation": evaluation}

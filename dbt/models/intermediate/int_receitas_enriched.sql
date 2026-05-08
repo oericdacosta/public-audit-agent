@@ -5,7 +5,7 @@ with receitas as (
 
 , orgaos as (
     select *
-    from {{ ref('stg_orgaos') }}
+    from {{ ref('int_orgaos_enriched') }}
 )
 
 , unidades as (
@@ -33,7 +33,7 @@ with receitas as (
             when rec.mes_referencia[5:6] in ('07', '08', '09') then 'T3'
             when rec.mes_referencia[5:6] in ('10', '11', '12') then 'T4'
         end as trimestre
-        , coalesce(org.descricao_orgao, 'Orgao ' || rec.codigo_orgao) as nome_orgao
+        , coalesce(org.nome_orgao, 'Orgao ' || rec.codigo_orgao) as nome_orgao
         , coalesce(
             uni.descricao_unidade_orcamentaria, 'Unidade ' || rec.codigo_unidade_orcamentaria
         ) as nome_unidade_orcamentaria

@@ -20,13 +20,36 @@ models:
         description: "Nome da área de política pública (ex: Saúde, Educação, Saneamento Básico)."
       - name: total_empenhado_ano
         description: "Total empenhado na função durante o ano em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_liquidado_ano
         description: "Total liquidado na função durante o ano em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_pago_ano
         description: "Total pago na função durante o ano em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: percentual_executado
         description: "Taxa de execução da função no ano: pago / empenhado * 100."
+        meta:
+          semantic_type: ratio
       - name: percentual_orcamento_total
         description: "Participação percentual da função no orçamento total pago do município."
+        meta:
+          semantic_type: ratio
       - name: rank_funcao_no_ano
         description: "Posição da função no ranking de maiores gastos do ano (1 = maior)."
+        meta:
+          semantic_type: count
+      - name: status_qualidade
+        description: >
+          Classificação de qualidade dos dados para este (municipio_id, ano_exercicio, nome_funcao):
+          DADOS_CONSOLIDADOS, DADOS_PARCIAIS, DADOS_POSSIVELMENTE_INCOMPLETOS, ZERO_SEM_HISTORICO,
+          SEM_DADOS_ETL. NULL quando não há dados de qualidade disponíveis.
+      - name: explicacao_qualidade
+        description: "Texto explicativo sobre o status dos dados. Usar literalmente na resposta ao usuário."
+      - name: anos_com_historico_nao_zero
+        description: "Número de anos anteriores com execução não-nula para esta função no município."
+        meta:
+          semantic_type: count

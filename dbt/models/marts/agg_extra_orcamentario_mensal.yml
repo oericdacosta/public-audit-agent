@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: agg_extra_orcamentario_mensal
+    description: >
+      Contagem mensal de movimentos extra-orçamentários (despesas e receitas fora do orçamento).
+      Movimentos extra-orçamentários são entradas e saídas temporárias de caixa que não
+      afetam diretamente o orçamento aprovado (ex: retenções, depósitos em garantia, cauções).
+      Granularidade: uma linha por (municipio_id, ano_exercicio, mes_referencia, tipo_movimento).
+
+      LIMITAÇÃO: a fonte TCE-CE não retorna valores financeiros para os movimentos
+      extra-orçamentários — apenas a existência/contagem de registros está disponível.
+      Para análise de valores, use agg_resultado_fiscal_mensal.
+    columns:
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: ano_exercicio
+        description: "Ano fiscal."
+      - name: mes_referencia
+        description: "Mês no formato YYYYMM."
+      - name: mes_referencia_date
+        description: "Primeiro dia do mês (tipo date)."
+      - name: tipo_movimento
+        description: "Tipo: DESPESA_EXTRA (saída) ou RECEITA_EXTRA (entrada)."
+      - name: total_registros
+        description: "Quantidade de movimentos extra-orçamentários no mês."
+        meta:
+          semantic_type: count

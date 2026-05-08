@@ -15,7 +15,7 @@ licitacoes as (
     select
         municipio_id
         , nome_municipio
-    from {{ ref('stg_municipios') }}
+    from {{ ref('seed_entidades') }}
 )
 
 , final as (

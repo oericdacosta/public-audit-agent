@@ -26,7 +26,7 @@ repos:
   # SQL Linting (SQLFluff)
   # ─────────────────────────────────────────────────────────────
   - repo: https://github.com/sqlfluff/sqlfluff
-    rev: 3.2.5
+    rev: 4.0.0
     hooks:
       - id: sqlfluff-lint
         additional_dependencies: ['dbt-duckdb', 'dbt-core', 'sqlfluff-templater-dbt']

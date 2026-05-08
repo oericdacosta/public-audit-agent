@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: agg_licitacoes_por_modalidade_ano
+    description: >
+      Agregação anual de licitações por modalidade (Pregão, Dispensa, Concorrência, etc.).
+      Permite comparar volume e valor licitado entre modalidades e identificar padrões
+      de uso de dispensa de licitação ao longo dos anos.
+      Granularidade: uma linha por (municipio_id, ano_exercicio, modalidade_licitacao_label).
+    columns:
+      - name: municipio_id
+        description: "Identificador do município."
+      - name: nome_municipio
+        description: "Nome do município (desnormalizado)."
+      - name: ano_exercicio
+        description: "Ano fiscal."
+      - name: modalidade_licitacao_label
+        description: "Rótulo legível da modalidade licitatória."
+      - name: is_dispensa
+        description: "Verdadeiro quando a modalidade é Dispensa ou Inexigibilidade."
+      - name: total_licitacoes
+        description: "Quantidade total de processos licitatórios na modalidade no ano."
+        meta:
+          semantic_type: count
+      - name: total_desertas
+        description: "Quantidade de licitações sem participantes na modalidade no ano."
+        meta:
+          semantic_type: count
+      - name: total_unico_participante
+        description: "Quantidade de licitações com apenas um participante."
+        meta:
+          semantic_type: count
+      - name: total_valor_estimado
+        description: "Soma dos valores estimados de todas as licitações da modalidade no ano em R$."
+        meta:
+          semantic_type: monetary_brl
+      - name: total_valor_adjudicado
+        description: "Soma dos valores adjudicados aos vencedores na modalidade no ano em R$."
+        meta:
+          semantic_type: monetary_brl
+      - name: media_licitantes
+        description: "Média de participantes por licitação na modalidade."
+        meta:
+          semantic_type: ratio
+      - name: percentual_desertas
+        description: "Percentual de licitações desertas em relação ao total da modalidade (%)."
+        meta:
+          semantic_type: ratio

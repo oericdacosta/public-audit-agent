@@ -15,10 +15,7 @@ from typing import Any
 from src.config import get_settings
 from src.etl.client import AsyncTCEClient
 from src.etl.collectors.despesas import ExpensesCollector
-from src.etl.collectors.extra_orcamentaria import (
-    DespesaExtraOrcamentariaCollector,
-    ReceitaExtraOrcamentariaCollector,
-)
+from src.etl.collectors.extra_orcamentaria import DespesaExtraOrcamentariaCollector
 from src.etl.collectors.generic import (
     NO_PARAMS_ENDPOINTS,
     PAGINATED_ENDPOINTS,
@@ -55,9 +52,6 @@ SPECIALIZED_ENDPOINTS: frozenset[Endpoint] = frozenset(
         Endpoint.DESPESAS,
         Endpoint.RECEITAS,
         Endpoint.BALANCETE_DESPESA_EXTRA,
-        Endpoint.BALANCETE_RECEITA_EXTRA,
-        Endpoint.CONTRATOS,
-        Endpoint.CONTRATADOS,
         Endpoint.ITENS_LICITACOES,
         Endpoint.LICITANTES,
     }
@@ -117,10 +111,6 @@ def _create_specialized_collectors(
         Endpoint.LICITACOES: TransacoesCollector(
             db_manager, client, Endpoint.LICITACOES
         ),
-        Endpoint.CONTRATOS: TransacoesCollector(db_manager, client, Endpoint.CONTRATOS),
-        Endpoint.CONTRATADOS: TransacoesCollector(
-            db_manager, client, Endpoint.CONTRATADOS
-        ),
         Endpoint.ITENS_LICITACOES: TransacoesCollector(
             db_manager, client, Endpoint.ITENS_LICITACOES
         ),
@@ -130,9 +120,6 @@ def _create_specialized_collectors(
         Endpoint.DESPESAS: ExpensesCollector(db_manager, client),
         Endpoint.RECEITAS: RevenueCollector(db_manager, client),
         Endpoint.BALANCETE_DESPESA_EXTRA: DespesaExtraOrcamentariaCollector(
-            db_manager, client
-        ),
-        Endpoint.BALANCETE_RECEITA_EXTRA: ReceitaExtraOrcamentariaCollector(
             db_manager, client
         ),
     }

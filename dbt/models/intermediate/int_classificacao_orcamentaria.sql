@@ -25,14 +25,14 @@ with funcoes as (
         , ano_exercicio
     from {{ ref('stg_orcamento_despesa') }}
     qualify row_number() over (
-        partition by
-            codigo_funcao
-            , codigo_programa
-            , codigo_projeto_atividade
-            , municipio_id
-            , ano_exercicio
-        order by nome_projeto_atividade desc nulls last
-    ) = 1
+            partition by
+                codigo_funcao
+                , codigo_programa
+                , codigo_projeto_atividade
+                , municipio_id
+                , ano_exercicio
+            order by nome_projeto_atividade desc nulls last
+        ) = 1
 )
 
 , final as (

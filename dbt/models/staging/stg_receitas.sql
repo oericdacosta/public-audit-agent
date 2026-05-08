@@ -11,6 +11,7 @@ source_data as (
         , descricao_receita
         , valor_orcado
         , valor_arrecadado
+        , raw_data
         , updated_at
     from {{ source('tce_ce', 'receitas') }}
 )
@@ -22,11 +23,29 @@ source_data as (
         , cast(exercicio_orcamento as integer) as ano_exercicio
         , cast(mes_referencia as varchar) as mes_referencia
         , cast(codigo_orgao as varchar) as codigo_orgao
-        , cast(codigo_unidade_orcamentaria as varchar) as codigo_unidade_orcamentaria
-        , cast(codigo_receita as varchar) as codigo_receita
+        , cast(
+            coalesce(codigo_unidade_orcamentaria, json_extract_string(raw_data, '$.codigo_unidade'))
+            as varchar
+        ) as codigo_unidade_orcamentaria
+        , cast(
+            coalesce(codigo_receita, json_extract_string(raw_data, '$.codigo_rubrica'))
+            as varchar
+        ) as codigo_receita
         , cast(descricao_receita as varchar) as descricao_receita
-        , cast(valor_orcado as decimal(18, 2)) as valor_orcado
-        , cast(valor_arrecadado as decimal(18, 2)) as valor_arrecadado
+        , cast(
+            coalesce(
+                valor_orcado
+                , try_cast(json_extract_string(raw_data, '$.valor_previsto_orcamento') as double)
+            )
+            as decimal(18, 2)
+        ) as valor_orcado
+        , cast(
+            coalesce(
+                valor_arrecadado
+                , try_cast(json_extract_string(raw_data, '$.valor_arrecadacao_ate_mes') as double)
+            )
+            as decimal(18, 2)
+        ) as valor_arrecadado
         , cast(updated_at as timestamp) as updated_at
     from source_data
 )

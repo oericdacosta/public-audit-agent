@@ -8,13 +8,12 @@ Fluxo::
 
     dbt_seed → dbt_run_staging → dbt_test_sources (BLOQUEIA se falhar)
         → dbt_run_dims → dbt_run_fcts → dbt_run_fcts_enriched
-        → dbt_run_aggs → dbt_run_data_quality → dbt_test_marts
-        → [check_data_quality_score → reindex_catalog]  ← paralelo → [dbt_docs_generate]
+        → dbt_run_data_quality → dbt_run_aggs → dbt_test_marts
+        → [check_data_quality_score] ← paralelo → [dbt_docs_generate]
 
 Todos os tasks dbt usam pool ``etl_pool`` (DuckDB single-writer).
-``check_data_quality_score`` e ``reindex_catalog`` não precisam do pool
-(leitura read_only e acesso apenas a arquivos YML, respectivamente) e
-rodam em paralelo com ``dbt_docs_generate``.
+``check_data_quality_score`` não precisa do pool (leitura read_only) e
+roda em paralelo com ``dbt_docs_generate``.
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ default_args = {
 @dag(
     dag_id="civic_audit_dbt",
     default_args=default_args,
-    description="dbt: seed → staging → marts → qualidade → reindex catálogo",
+    description="dbt: seed → staging → marts → qualidade → docs",
     schedule=None,  # Acionado pelo ETL via TriggerDagRunOperator
     start_date=datetime(2026, 1, 1),
     catchup=False,
@@ -107,7 +106,7 @@ def civic_audit_dbt():
         task_id="dbt_run_fcts",
         bash_command=(
             f"{_DBT} run --select "
-            "fct_despesas fct_receitas fct_contratos fct_licitacoes fct_servidores"
+            "fct_despesas fct_receitas fct_licitacoes fct_servidores"
         ),
         pool=_POOL,
         execution_timeout=timedelta(minutes=30),
@@ -118,30 +117,33 @@ def civic_audit_dbt():
         task_id="dbt_run_fcts_enriched",
         bash_command=(
             f"{_DBT} run --select "
-            "fct_contratos_fornecedores fct_licitacoes_risco brd_licitantes"
+            "fct_licitacoes_risco brd_licitantes brd_licitacoes_vencedores"
         ),
         pool=_POOL,
         execution_timeout=timedelta(minutes=20),
     )
 
-    # Agregações
-    run_aggs = BashOperator(
-        task_id="dbt_run_aggs",
-        bash_command=(
-            f"{_DBT} run --select "
-            "agg_despesas_por_funcao_ano agg_despesas_por_orgao_ano "
-            "agg_orcamento_por_funcao_ano agg_resultado_fiscal_mensal"
-        ),
-        pool=_POOL,
-        execution_timeout=timedelta(minutes=20),
-    )
-
-    # Data quality — por último: usa historico_nao_zero que agrega todos os anos
+    # Data quality — antes das aggs:
+    # agg_despesas_por_funcao_ano depende de agg_data_quality
     run_data_quality = BashOperator(
         task_id="dbt_run_data_quality",
         bash_command=f"{_DBT} run --select agg_data_quality",
         pool=_POOL,
         execution_timeout=timedelta(minutes=10),
+    )
+
+    # Agregações (dependem de agg_data_quality)
+    run_aggs = BashOperator(
+        task_id="dbt_run_aggs",
+        bash_command=(
+            f"{_DBT} run --select "
+            "agg_despesas_por_funcao_ano agg_despesas_por_orgao_ano "
+            "agg_orcamento_por_funcao_ano agg_resultado_fiscal_mensal "
+            "agg_licitacoes_por_modalidade_ano agg_receitas_por_categoria_ano "
+            "agg_despesas_pessoal_ano agg_extra_orcamentario_mensal"
+        ),
+        pool=_POOL,
+        execution_timeout=timedelta(minutes=20),
     )
 
     # ------------------------------------------------------------------
@@ -158,8 +160,8 @@ def civic_audit_dbt():
 
     # ------------------------------------------------------------------
     # Fan-out paralelo após test_marts:
-    #   Caminho A: check_data_quality_score → reindex_catalog  (sem pool)
-    #   Caminho B: dbt_docs_generate                           (com pool)
+    #   Caminho A: check_data_quality_score  (sem pool)
+    #   Caminho B: dbt_docs_generate         (com pool)
     # ------------------------------------------------------------------
 
     @task(trigger_rule=TriggerRule.ALL_DONE)
@@ -221,24 +223,8 @@ def civic_audit_dbt():
 
             return "ok"
         except Exception as e:
-            logger.warning("Data quality check falhou: %s — não bloqueando reindex", e)
+            logger.warning("Data quality check falhou: %s", e)
             return "ok"
-
-    @task(trigger_rule=TriggerRule.ALL_DONE)
-    def reindex_catalog() -> str:
-        """
-        Reconstrói o índice de embeddings semânticos do catálogo de tabelas.
-
-        Usa SHA-256 por arquivo YML para re-embedar apenas tabelas cujos
-        metadados mudaram. Limpa lru_cache após rebuild para garantir que
-        o próximo acesso ao agente use o índice atualizado.
-        """
-        from src.utils.embeddings import _load_index, build_index
-
-        build_index()
-        _load_index.cache_clear()
-        logger.info("Catalog embedding index rebuilt and cache cleared")
-        return "reindexed"
 
     docs_generate = BashOperator(
         task_id="dbt_docs_generate",
@@ -258,16 +244,15 @@ def civic_audit_dbt():
         >> run_dims
         >> run_fcts
         >> run_fcts_enriched
-        >> run_aggs
         >> run_data_quality
+        >> run_aggs
         >> test_marts
     )
 
     # Fan-out paralelo: caminho A (sem pool) e caminho B (com pool)
     quality_result = check_data_quality_score()
-    reindex = reindex_catalog()
 
-    test_marts >> quality_result >> reindex
+    test_marts >> quality_result
     test_marts >> docs_generate
 
 

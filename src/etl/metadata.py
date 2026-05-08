@@ -5,9 +5,11 @@ Tracks ETL execution status for idempotent processing.
 """
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 import duckdb
+
+ETLStatus = Literal["STARTED", "COMPLETED", "FAILED"]
 
 if TYPE_CHECKING:
     from src.etl.db_manager import DatabaseManager
@@ -32,7 +34,9 @@ class ETLMetadataManager:
         """
         self._db_manager = db_manager
 
-    def get_status(self, municipality_id: str, year: int, source: str) -> Optional[str]:
+    def get_status(
+        self, municipality_id: str, year: int, source: str
+    ) -> Optional[ETLStatus]:
         """
         Check if a specific year/source has been processed.
 
@@ -64,7 +68,7 @@ class ETLMetadataManager:
         municipality_id: str,
         year: int,
         source: str,
-        status: str,
+        status: ETLStatus,
         count: int = 0,
     ) -> None:
         """

@@ -48,26 +48,6 @@ class Endpoint(Enum):
         "balancete_despesa_extra",
         "balancete_despesa_extra_orcamentaria",
     )
-    BALANCETE_RECEITA_EXTRA = (
-        "/balancete_receita_extra_orcamentaria",
-        APIBase.DEFAULT,
-        "balancete_receita_extra",
-        "balancete_receita_extra_orcamentaria",
-    )
-
-    # Detailed Revenue Endpoints (Taloes)
-    TALOES_RECEITAS = (
-        "/taloes_receitas",
-        APIBase.DEFAULT,
-        "taloes_receitas",
-        "taloes_receitas",
-    )
-    TALOES_EXTRAS = (
-        "/taloes_extras",
-        APIBase.DEFAULT,
-        "taloes_extras",
-        "taloes_extras",
-    )
 
     # Procurement
     LICITACOES = (
@@ -75,18 +55,6 @@ class Endpoint(Enum):
         APIBase.DEFAULT,
         "licitacoes",
         "licitacoes",
-    )
-    CONTRATOS = (
-        "/contrato",
-        APIBase.DEFAULT,
-        "contratos",
-        "contrato",
-    )
-    CONTRATADOS = (
-        "/contratados",
-        APIBase.DEFAULT,
-        "contratados",
-        "contratados",
     )
     ITENS_LICITACOES = (
         "/itens_licitacoes",
@@ -101,41 +69,12 @@ class Endpoint(Enum):
         "licitantes",
     )
 
-    # Fiscal Endpoints (Notas e Pagamentos)
-    NOTAS_FISCAIS = (
-        "/notas_fiscais",
-        APIBase.DEFAULT,
-        "notas_fiscais",
-        "notas_fiscais",
-    )
-    NOTAS_PAGAMENTOS = (
-        "/notas_pagamentos",
-        APIBase.DEFAULT,
-        "notas_pagamentos",
-        "notas_pagamentos",
-    )
-    ITENS_NOTAS_FISCAIS = (
-        "/itens_notas_fiscais",
-        APIBase.DEFAULT,
-        "itens_notas_fiscais",
-        "itens_notas_fiscais",
-    )
-
     # Personnel Endpoints (Agentes Públicos)
     AGENTES_PUBLICOS = (
         "/agentes_publicos",
         APIBase.DEFAULT,
         "agentes_publicos",
         "agentes_publicos",
-    )
-
-    # Expense Cycle Endpoints (Empenho -> Liquidação)
-    # Expense Cycle Endpoints (Liquidação)
-    LIQUIDACOES = (
-        "/liquidacoes",
-        APIBase.DEFAULT,
-        "liquidacoes",
-        "liquidacoes",
     )
 
     # Dimension/Lookup Tables
@@ -162,12 +101,6 @@ class Endpoint(Enum):
         APIBase.DEFAULT,
         "funcoes",
         "funcoes",
-    )
-    ORDENADORES = (
-        "/ordenadores",
-        APIBase.DEFAULT,
-        "ordenadores",
-        "ordenadores",
     )
     CONTAS_BANCARIAS = (
         "/contas_bancarias",

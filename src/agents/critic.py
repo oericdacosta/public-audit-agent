@@ -2,13 +2,14 @@
 Critic Agent.
 
 Reviewer function that validates the Analyst's code before execution.
-Uses load_prompt() with cache to avoid repeated disk reads.
+Uses structured output to guarantee a clean APPROVE/REJECT verdict.
 """
 
 import logging
-from typing import cast
+from typing import Literal, Optional, cast
 
 from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
 
 from src.utils.llm import get_llm
 from src.utils.prompts import load_prompt
@@ -16,22 +17,33 @@ from src.utils.prompts import load_prompt
 logger = logging.getLogger(__name__)
 
 
-def review_code(question: str, code: str) -> str:
+class _CriticOutput(BaseModel):
+    verdict: Literal["APPROVE", "REJECT"]
+    reason: Optional[str] = None
+
+
+def review_code(question: str, code: str, schema_context: str = "") -> str:
     """
     Review generated code for correctness and safety.
 
-    Uses the critic_system.md prompt (loaded with cache) to evaluate
-    the code against the user's question before sandbox execution.
+    Uses the critic_system.md prompt to evaluate the code against the user's
+    question before sandbox execution. Schema context (including documented FK
+    gaps from dbt YAML) is injected when available.
 
     Args:
         question: The original user question the code is meant to answer.
         code: The generated Python code to review.
+        schema_context: Compact schema string with table/column metadata.
 
     Returns:
-        Review verdict: "APPROVE" or "REJECT: <reason>".
+        Review verdict: "APPROVE" or "REJECT [CODE]: <reason>".
     """
     llm = get_llm("critic_model", timeout=30)
     system_instructions = load_prompt("critic_system.md")
+    if schema_context:
+        system_instructions = (
+            system_instructions + f"\n\n# Schema Context\n{schema_context}"
+        )
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -43,8 +55,10 @@ def review_code(question: str, code: str) -> str:
         ]
     )
 
-    chain = prompt | llm
-    response = chain.invoke({"question": question, "code": code})
-    verdict = cast(str, response.content).strip()
-    logger.debug("Critic verdict: %s", verdict[:100])
-    return verdict
+    chain = prompt | llm.with_structured_output(_CriticOutput)
+    result = cast(_CriticOutput, chain.invoke({"question": question, "code": code}))
+    logger.debug("Critic verdict: %s reason: %s", result.verdict, result.reason)
+
+    if result.verdict == "APPROVE":
+        return "APPROVE"
+    return f"REJECT [CODE]: {result.reason or 'See review'}"

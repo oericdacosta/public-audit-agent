@@ -6,11 +6,12 @@ Main orchestrator for the CivicAudit workflow integrating all agents.
 
 import logging
 import uuid
-from typing import Optional, cast
+from typing import Literal, Optional, cast
 
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from pydantic import BaseModel
 
 from src.agents.analyst import (
     check_execution,
@@ -28,11 +29,23 @@ from src.agents.fiscal import (
     list_tables_node,
 )
 from src.agents.guardrail import guardrail_input, guardrail_output
+from src.agents.integrity import check_result_integrity
 from src.agents.planner import planner
 from src.schemas.state import AgentState
 from src.utils.langfuse_client import get_langfuse_client
 
 logger = logging.getLogger(__name__)
+
+
+class AuditResponse(BaseModel):
+    """Typed, validated output of a completed audit workflow run."""
+
+    answer: str
+    trace_id: str = ""
+    data_gap_detected: bool = False
+    gap_reason: Optional[Literal["empty_result", "data_unavailable"]] = None
+    iterations: int = 0
+    route_path: str = ""
 
 
 def check_guardrail(state: AgentState) -> str:
@@ -156,22 +169,9 @@ class AuditGraph:
 
     def __init__(self) -> None:
         """Initialize the audit workflow graph."""
-        self._ensure_embeddings()
         self.memory = MemorySaver()
         self.graph = self._build_graph()
         self.last_thread_id: Optional[str] = None
-
-    @staticmethod
-    def _ensure_embeddings() -> None:
-        """Rebuild the semantic embedding index if mart YML files changed."""
-        try:
-            from src.utils.embeddings import ensure_index_fresh
-
-            ensure_index_fresh()
-        except Exception as e:
-            logger.warning(
-                "Embedding index check failed (agent will use fallback): %s", e
-            )
 
     def _build_graph(self) -> StateGraph:
         """
@@ -197,6 +197,7 @@ class AuditGraph:
         workflow.add_node("generate", generate)
         workflow.add_node("critic", critique)
         workflow.add_node("execute", execute)
+        workflow.add_node("check_result_integrity", check_result_integrity)
         workflow.add_node("editor", editor)
         workflow.add_node("guardrail_output", guardrail_output)
 
@@ -224,15 +225,20 @@ class AuditGraph:
             {"check_sql": "check_sql", END: END},
         )
 
-        # Short-circuit after check_sql when SQL failed validation
+        # Short-circuit after check_sql when SQL failed validation or gap detected
         workflow.add_conditional_edges(
             "check_sql",
             check_sql_validated,
-            {"simple_execute": "simple_execute", "generate": "generate", END: END},
+            {
+                "simple_execute": "simple_execute",
+                "generate": "generate",
+                "editor": "editor",
+                END: END,
+            },
         )
 
-        # Simple path: direct SQL execution bypasses Python gen + critic + Docker
-        workflow.add_edge("simple_execute", "editor")
+        # Simple path: direct SQL execution → integrity check → editor
+        workflow.add_edge("simple_execute", "check_result_integrity")
 
         # Analyst Agent Loop (Generate Code -> Critic -> Execute)
         workflow.add_edge("generate", "critic")
@@ -247,13 +253,14 @@ class AuditGraph:
             },
         )
 
-        # Execute -> Editor -> Output Guardrail
+        # Execute -> integrity check -> Editor -> Output Guardrail
         workflow.add_conditional_edges(
             "execute",
             check_execution,
-            {"generate": "generate", END: "editor"},
+            {"generate": "generate", END: "check_result_integrity"},
         )
 
+        workflow.add_edge("check_result_integrity", "editor")
         workflow.add_edge("editor", "guardrail_output")
 
         # Output -> End
@@ -339,6 +346,7 @@ class AuditGraph:
         guardrail_verdict = final_state.get("guardrail_verdict", "")
         simple_path = iterations == 0 and bool(sql_query) and not has_error
         traj_eff = _compute_trajectory_efficiency(route_path, iterations)
+        data_gap = final_state.get("data_gap_detected", False)
         logger.info(
             "\n── Run Metrics ──────────────────────────────────────\n"
             "  route_path             : %s\n"
@@ -348,6 +356,8 @@ class AuditGraph:
             "  sql_generated          : %s\n"
             "  planner_invoked        : %s\n"
             "  simple_sql_path        : %s\n"
+            "  data_gap_detected      : %s\n"
+            "  gap_reason             : %s\n"
             "  critic_approved_1st    : %s\n"
             "  retries_used           : %d\n"
             "  trajectory_efficiency  : %.3f\n"
@@ -360,6 +370,8 @@ class AuditGraph:
             bool(sql_query),
             final_state.get("plan") is not None,
             simple_path,
+            data_gap,
+            final_state.get("gap_reason") or "—",
             iterations <= 1,
             iterations,
             traj_eff,
@@ -423,6 +435,15 @@ class AuditGraph:
             # ── Tool Call & Execution ─────────────────────────────────────
             _score("sql_generated", 1.0 if sql_query else 0.0, "BOOLEAN")
 
+            # ── Data Gap Detection ────────────────────────────────────────
+            data_gap = final_state.get("data_gap_detected", False)
+            _score("data_gap_detected", 1.0 if data_gap else 0.0, "BOOLEAN")
+            gap_reason = final_state.get("gap_reason") or ""
+            if gap_reason:
+                _score("gap_reason", gap_reason, "CATEGORICAL")
+            gap_recovery = bool(data_gap and final_state.get("gap_alternative"))
+            _score("gap_recovery_presented", 1.0 if gap_recovery else 0.0, "BOOLEAN")
+
             # ── Efficiency ────────────────────────────────────────────────
             if latency_ms > 0:
                 _score("total_latency_ms", round(latency_ms, 2), "NUMERIC")
@@ -465,6 +486,12 @@ class AuditGraph:
             "iterations": 0,
             "trace_id": trace_id,
             "root_span_id": root_span_id,
+            # Gap fields are per-query — always reset to avoid stale state between turns
+            "data_gap_detected": False,
+            "gap_reason": None,
+            "gap_detail": None,
+            "gap_alternative": None,
+            "gap_context": None,
         }
 
         # For new conversations, reset transient state.
@@ -497,3 +524,82 @@ class AuditGraph:
             root_span, dict(final_state), thread_id, latency_ms=latency_ms
         )
         return str(final_state.get("output", "Nenhum resultado gerado."))
+
+    def run_structured(
+        self, user_question: str, thread_id: Optional[str] = None
+    ) -> AuditResponse:
+        """
+        Execute the audit workflow and return a typed, validated response.
+
+        Same execution as run() but returns AuditResponse instead of str,
+        giving callers structured access to gap detection, trace ID, and
+        routing metadata without parsing the output string.
+
+        Args:
+            user_question: The user's audit question.
+            thread_id: Thread ID for conversation continuity.
+
+        Returns:
+            AuditResponse with answer, trace info, and gap metadata.
+        """
+        is_new_conversation = thread_id is None
+        thread_id = thread_id or str(uuid.uuid4())
+        self.last_thread_id = thread_id
+
+        config = {
+            "configurable": {"thread_id": thread_id},
+            "recursion_limit": 30,
+        }
+
+        root_span, trace_id, root_span_id = self._create_trace(
+            user_question, thread_id, is_new_conversation=is_new_conversation
+        )
+
+        inputs: dict = {
+            "messages": [HumanMessage(content=user_question)],
+            "iterations": 0,
+            "trace_id": trace_id,
+            "root_span_id": root_span_id,
+            # Gap fields are per-query — always reset to avoid stale state between turns
+            "data_gap_detected": False,
+            "gap_reason": None,
+            "gap_detail": None,
+            "gap_alternative": None,
+            "gap_context": None,
+        }
+        if is_new_conversation:
+            inputs.update({"error": None, "evaluation": None, "sql_query": None})
+
+        import time
+
+        final_state: dict = {}
+        t_start = time.perf_counter()
+        try:
+            final_state = self.graph.invoke(inputs, config=config)  # type: ignore
+        except Exception as e:
+            logger.error("Workflow error for thread %s: %s", thread_id, e)
+            return AuditResponse(
+                answer=f"Erro interno no processamento da consulta: {e}",
+                trace_id=trace_id,
+            )
+
+        latency_ms = (time.perf_counter() - t_start) * 1000
+        self._finalize_trace(
+            root_span, dict(final_state), thread_id, latency_ms=latency_ms
+        )
+
+        gap_reason_raw = final_state.get("gap_reason")
+        gap_reason: Optional[Literal["empty_result", "data_unavailable"]] = (
+            gap_reason_raw
+            if gap_reason_raw in ("empty_result", "data_unavailable")
+            else None
+        )
+
+        return AuditResponse(
+            answer=str(final_state.get("output", "Nenhum resultado gerado.")),
+            trace_id=str(final_state.get("trace_id", trace_id)),
+            data_gap_detected=bool(final_state.get("data_gap_detected", False)),
+            gap_reason=gap_reason,
+            iterations=int(final_state.get("iterations", 0)),
+            route_path=_infer_route_path(final_state),
+        )

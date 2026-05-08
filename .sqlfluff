@@ -8,7 +8,7 @@ exclude_rules = LT01, LT12, ST06, ST02
 project_dir = ./dbt
 profiles_dir = ./dbt
 profile = civic_audit
-target = dev
+target = lint
 
 [sqlfluff:indentation]
 tab_space_size = 4

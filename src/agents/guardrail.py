@@ -6,10 +6,11 @@ Input and output safety validation for the audit workflow.
 
 import logging
 import re
-from typing import Any, Optional, cast
+from typing import Any, Literal, Optional, cast
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
 
 from src.schemas.state import AgentState
 from src.utils.llm import get_llm
@@ -42,11 +43,8 @@ _FISCAL_KEYWORDS: frozenset[str] = frozenset(
         "licitações",
         "licitacao",
         "licitacoes",
-        "contrato",
-        "contratos",
         "fornecedor",
         "fornecedores",
-        "contratado",
         "orçamento",
         "orcamento",
         "empenho",
@@ -72,8 +70,6 @@ _FISCAL_KEYWORDS: frozenset[str] = frozenset(
         "auditoria",
         "transparência",
         "transparencia",
-        "nota fiscal",
-        "notas fiscais",
         "balancete",
         "orçamentário",
         "orcamentario",
@@ -179,29 +175,52 @@ def _redact_pii(text: str) -> str:
     return text
 
 
-def _semantic_route(user_input: str) -> dict[str, Any]:
-    """
-    Run semantic table selection and complexity detection for a SAFE query.
+# Keywords that indicate a multi-step / analytical query → route to Planner.
+# Simple factual lookups ("qual o total de X") don't match any of these.
+_COMPLEX_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "tendencia",
+        "tendência",
+        "evolucao",
+        "evolução",
+        "compare",
+        "comparar",
+        "comparacao",
+        "comparação",
+        "versus",
+        "ranking",
+        "top",
+        "variacao",
+        "variação",
+        "percentual",
+        "crescimento",
+        "correlacao",
+        "correlação",
+        "progressao",
+        "progressão",
+        "historico",
+        "histórico",
+        "projecao",
+        "projeção",
+        "ano a ano",
+        "mes a mes",
+    }
+)
 
-    Reads thresholds from config.yaml (embeddings section).
-    Returns a dict with 'selected_tables' and 'is_complex' to merge into state.
-    Never raises — falls back to empty/False if the embedding index is unavailable.
-    """
-    try:
-        from src.config import get_settings
-        from src.utils.embeddings import analyze_question
 
-        cfg = get_settings().get("embeddings", {})
-        selected_tables, is_complex = analyze_question(
-            user_input,
-            top_k=int(cfg.get("top_k", 4)),
-            complexity_threshold=float(cfg.get("complexity_threshold", 0.62)),
-            min_score=float(cfg.get("min_table_score", 0.30)),
-        )
-        return {"selected_tables": selected_tables, "is_complex": is_complex}
-    except Exception as e:
-        logger.warning("Semantic routing failed (index may not be built): %s", e)
-        return {"selected_tables": [], "is_complex": False}
+def _is_complex_query(text: str) -> bool:
+    """
+    Detect whether a query requires multi-step analytical reasoning.
+
+    Returns True when the question contains keywords associated with time-series
+    analysis, comparisons, rankings, or trend detection — all of which benefit
+    from the Planner decomposing the task before SQL generation.
+
+    Simple factual lookups ("qual o total de despesas em 2024?") return False.
+    """
+    text_lower = text.lower()
+    words = set(re.findall(r"[\w\u00c0-\u024f]+", text_lower))
+    return bool(words & _COMPLEX_KEYWORDS)
 
 
 @observe_node(event_type="GUARDRAIL", model_key="guardrail_model")
@@ -231,7 +250,7 @@ def guardrail_input(state: AgentState) -> dict[str, Any]:
         return {
             "guardrail_verdict": "SAFE",
             "user_question": user_input,
-            **_semantic_route(user_input),
+            "is_complex": _is_complex_query(user_input),
         }
     if fast_verdict == "UNSAFE":
         logger.warning("GUARDRAIL: fast-path UNSAFE: %s", user_input[:100])
@@ -249,17 +268,16 @@ def guardrail_input(state: AgentState) -> dict[str, Any]:
     safety_prompt = load_prompt("guardrail_input.md")
     llm = get_llm("guardrail_model", timeout=30)
 
-    chain = (
-        ChatPromptTemplate.from_messages(
-            [("system", safety_prompt), ("human", "{input}")]
-        )
-        | llm
-    )
+    class _GuardrailVerdict(BaseModel):
+        verdict: Literal["SAFE", "UNSAFE"]
 
-    response = chain.invoke({"input": user_input})
-    verdict = cast(str, response.content).strip().upper()
+    chain = ChatPromptTemplate.from_messages(
+        [("system", safety_prompt), ("human", "{input}")]
+    ) | llm.with_structured_output(_GuardrailVerdict)
 
-    if "UNSAFE" in verdict:
+    response = cast(_GuardrailVerdict, chain.invoke({"input": user_input}))
+
+    if response.verdict == "UNSAFE":
         logger.warning("Input blocked by guardrail: %s", user_input[:100])
         return {
             "guardrail_verdict": "UNSAFE",
@@ -273,7 +291,7 @@ def guardrail_input(state: AgentState) -> dict[str, Any]:
     return {
         "guardrail_verdict": "SAFE",
         "user_question": user_input,
-        **_semantic_route(user_input),
+        "is_complex": _is_complex_query(user_input),
     }
 
 

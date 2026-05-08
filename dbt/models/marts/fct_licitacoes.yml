@@ -34,8 +34,12 @@ models:
         description: "Verdadeiro quando a modalidade é Dispensa ou Inexigibilidade."
       - name: valor_estimado
         description: "Valor estimado pelo órgão para o objeto licitado em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: valor_total_vencedor
         description: "Soma dos valores dos itens vencedores em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: faixa_valor
         description: "Faixa de valor estimado: 'acima de R$650k', 'R$100k a R$650k', 'até R$100k', 'não informado'."
       - name: quantidade_licitantes

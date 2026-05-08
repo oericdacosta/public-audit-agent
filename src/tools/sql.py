@@ -7,6 +7,7 @@ Public interface for database operations exposed to agents and MCP server.
 import logging
 import re
 import signal
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Tuple, Union
 
 from src.config import get_settings
@@ -188,3 +189,147 @@ def list_tables() -> list[str]:
     """List all available tables in the database."""
     introspector = _get_introspector()
     return introspector.get_all_tables()
+
+
+def _load_column_meta_tags() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """
+    Load column-level meta tags from dbt mart YAML files.
+
+    Returns:
+        (monetary_index, always_null_index) where each maps table name to
+        set of column names with that tag.
+        Empty dicts if mart directory not found or YAML parsing fails.
+    """
+    import yaml
+
+    monetary: dict[str, set[str]] = {}
+    always_null: dict[str, set[str]] = {}
+    mart_dir = (
+        Path(__file__).resolve().parent.parent.parent / "dbt" / "models" / "marts"
+    )
+    if not mart_dir.exists():
+        return monetary, always_null
+
+    for yml_file in mart_dir.glob("*.yml"):
+        try:
+            with open(yml_file) as f:
+                data = yaml.safe_load(f)
+            for model in data.get("models", []):
+                name = model.get("name", "")
+                if not name:
+                    continue
+                mon_cols: set[str] = set()
+                null_cols: set[str] = set()
+                for col in model.get("columns", []):
+                    col_name = col.get("name", "")
+                    meta = col.get("meta") or {}
+                    if col_name and meta.get("semantic_type") == "monetary_brl":
+                        mon_cols.add(col_name)
+                    if col_name and meta.get("data_quality") == "always_null":
+                        null_cols.add(col_name)
+                if mon_cols:
+                    monetary[name] = mon_cols
+                if null_cols:
+                    always_null[name] = null_cols
+        except Exception:
+            pass
+
+    return monetary, always_null
+
+
+def _load_mart_descriptions() -> dict[str, str]:
+    """
+    Load one-line model descriptions from dbt mart YAML files.
+
+    Reads dbt/models/marts/*.yml and extracts the first sentence of each
+    model's description. Used to annotate compact schema lines so the LLM
+    understands table semantics without relying on column names alone.
+
+    Returns:
+        Dict mapping table name to a short description string (≤ 150 chars).
+        Empty dict if the mart directory is not found or YAML parsing fails.
+    """
+    import yaml
+
+    descriptions: dict[str, str] = {}
+    mart_dir = (
+        Path(__file__).resolve().parent.parent.parent / "dbt" / "models" / "marts"
+    )
+    if not mart_dir.exists():
+        return descriptions
+
+    for yml_file in mart_dir.glob("*.yml"):
+        try:
+            with open(yml_file) as f:
+                data = yaml.safe_load(f)
+            for model in data.get("models", []):
+                name = model.get("name", "")
+                desc = str(model.get("description", "")).strip()
+                if name and desc:
+                    # First non-empty line, truncated at 150 chars
+                    short = next(
+                        (ln.strip() for ln in desc.splitlines() if ln.strip()), desc
+                    )
+                    if len(short) > 150:
+                        short = short[:150].rsplit(" ", 1)[0] + "…"
+                    descriptions[name] = short
+        except Exception:
+            pass
+
+    return descriptions
+
+
+def list_tables_compact(table_names: Optional[list[str]] = None) -> str:
+    """
+    Return compact schema for the specified tables as a single formatted string.
+
+    Each line has the format:
+        table_name [description]: col1 TYPE, col2 TYPE, ...
+
+    The description is read from the dbt mart YAML files (first sentence of the
+    model description). It gives the LLM semantic context — e.g., that
+    fct_servidores has NO salary data — without expanding to full DDL.
+
+    Args:
+        table_names: Tables to include. None returns all tables.
+
+    Returns:
+        Multi-line string with one table per line.
+    """
+    introspector = _get_introspector()
+    compact = introspector.get_compact_schema(table_names)
+    descriptions = _load_mart_descriptions()
+    monetary_index, always_null_index = _load_column_meta_tags()
+
+    lines = []
+    for table, cols in sorted(compact.items()):
+        table_monetary = monetary_index.get(table, set())
+        table_always_null = always_null_index.get(table, set())
+        if table_monetary or table_always_null:
+            annotated = []
+            for part in cols.split(", "):
+                col_name = part.split(" ")[0]
+                tags = []
+                if col_name in table_monetary:
+                    tags.append("monetary")
+                if col_name in table_always_null:
+                    tags.append("NULL:API não retorna")
+                if tags:
+                    annotated.append(part + " [" + "][".join(tags) + "]")
+                else:
+                    annotated.append(part)
+            cols = ", ".join(annotated)
+
+        desc = descriptions.get(table, "")
+        if desc:
+            lines.append(f"{table} [{desc}]: {cols}")
+        else:
+            lines.append(f"{table}: {cols}")
+
+    legend = (
+        "# Type guide: INTEGER/BIGINT = unquoted (2024), "
+        "VARCHAR = quoted ('sobral'), [monetary] = R$ currency column, "
+        "[NULL:API não retorna] = always NULL in source, "
+        "never use for filtering/sorting"
+    )
+    return "\n".join(lines) + "\n" + legend

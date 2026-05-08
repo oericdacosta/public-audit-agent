@@ -25,11 +25,6 @@ Each step must be simple enough for a Junior Analyst to execute in a single scri
      3. Calculate difference.
 2. **No Charts**: DO NOT ask for charts, plots, or images (matplotlib). Text/Table output only.
 3. **Explicit Printing**: Every step must instruct the Analyst to verification (e.g., "Print the top 5 rows").
-4. **English Only**: The user may ask in Portuguese, but your plan MUST be in English.
-
-# SECTION: OUTPUT FORMAT
-
-Return ONLY the numbered list. Do not include introductory text or markdown formatting like "Here is the plan".
 
 # SECTION: EXAMPLES
 

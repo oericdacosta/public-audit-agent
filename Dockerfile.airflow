@@ -1,0 +1,14 @@
+FROM apache/airflow:2.10.4-python3.12
+
+# Install project dependencies once at build time — eliminates per-container pip install on startup
+RUN pip install --no-cache-dir \
+    aiohttp \
+    pybreaker \
+    duckdb \
+    pandas \
+    pyyaml \
+    dbt-duckdb \
+    docker \
+    pip-audit \
+    bandit \
+    openai

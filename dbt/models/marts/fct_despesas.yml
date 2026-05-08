@@ -3,11 +3,13 @@ version: 2
 models:
   - name: fct_despesas
     description: >
-      Fato de despesas orçamentárias. Uma linha por empenho individual (despesa_id).
+      Fato de despesas orçamentárias oriundo do balancete mensal (não de empenhos individuais).
+      Cada linha representa o saldo acumulado de gastos de um órgão/função em um mês específico.
       Tabela de referência para análise detalhada de gastos: filtros por órgão, função,
       programa, status de execução e valores. Para totais agregados, prefira
       agg_despesas_por_orgao_ano ou agg_despesas_por_funcao_ano.
-      Granularidade: uma linha por despesa_id.
+      Granularidade: uma linha por (municipio_id, ano_exercicio, mes_referencia, codigo_orgao, codigo_funcao).
+      O campo despesa_id é uma chave sintética gerada pelo ETL — não representa um empenho individual.
 
       LIMITAÇÃO CONHECIDA — ausência de FK na fonte TCE-CE:
       Não existe ligação entre despesas e contratos (fct_contratos) nem entre despesas
@@ -43,14 +45,24 @@ models:
         description: "Grupo econômico: 'Despesas Correntes', 'Despesas de Capital' ou 'Outros'."
       - name: valor_empenhado
         description: "Valor empenhado (comprometido) em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: valor_liquidado
         description: "Valor liquidado (serviço/bem entregue confirmado) em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: valor_pago
         description: "Valor efetivamente pago em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: valor_nao_pago
         description: "Diferença entre valor_liquidado e valor_pago (pendente de pagamento)."
+        meta:
+          semantic_type: monetary_brl
       - name: percentual_executado
         description: "Percentual de execução: valor_pago / valor_empenhado * 100."
+        meta:
+          semantic_type: ratio
       - name: status_execucao
         description: "Status: 'pago_integralmente', 'pago_parcialmente', 'liquidado_nao_pago' ou 'empenhado_nao_liquidado'."
       - name: is_pago_integralmente

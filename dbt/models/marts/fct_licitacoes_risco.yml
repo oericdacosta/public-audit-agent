@@ -22,10 +22,16 @@ models:
         description: "Rótulo legível da modalidade licitatória."
       - name: valor_estimado
         description: "Valor estimado pelo órgão em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: valor_total_vencedor
         description: "Valor adjudicado aos vencedores em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: desvio_valor_absoluto
         description: "Diferença absoluta entre valor_total_vencedor e valor_estimado."
+        meta:
+          semantic_type: monetary_brl
       - name: desvio_valor_percentual
         description: "Desvio percentual entre valor contratado e estimado."
       - name: flag_possivel_superfaturamento

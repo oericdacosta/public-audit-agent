@@ -94,9 +94,7 @@ def civic_audit_security_scan():
         """
         Valida que a chave OpenAI está configurada e funcional.
 
-        Faz uma chamada real de embedding com texto mínimo para confirmar
-        que a chave não expirou ou foi revogada.
-        Custo: < $0.001 (uma chamada text-embedding-3-small com 1 token).
+        Usa models.list — chamada sem custo que confirma autenticação.
         """
         api_key = os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
@@ -107,17 +105,10 @@ def civic_audit_security_scan():
             from openai import OpenAI
 
             client = OpenAI(api_key=api_key)
-            response = client.embeddings.create(
-                model="text-embedding-3-small",
-                input=["health check"],
-            )
-            if response.data:
-                logger.info(
-                    "OpenAI key válida — embedding retornou %d vetor(es)",
-                    len(response.data),
-                )
-                return {"status": "ok", "model": "text-embedding-3-small"}
-            return {"status": "warning", "message": "Empty embedding response"}
+            models = client.models.list()
+            model_ids = [m.id for m in models.data[:3]]
+            logger.info("OpenAI key válida — modelos disponíveis: %s", model_ids)
+            return {"status": "ok", "sample_models": model_ids}
         except Exception as e:
             logger.error("OpenAI key inválida ou expirada: %s", e)
             return {"status": "error", "error": str(e)}

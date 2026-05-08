@@ -20,15 +20,29 @@ models:
         description: "Nome do órgão (ex: Secretaria Municipal de Saúde)."
       - name: total_empenhado_ano
         description: "Total empenhado pelo órgão no ano em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_liquidado_ano
         description: "Total liquidado pelo órgão no ano em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_pago_ano
         description: "Total pago pelo órgão no ano em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_nao_pago_ano
         description: "Total liquidado e não pago pelo órgão no ano em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: percentual_executado_ano
         description: "Percentual de execução anual do órgão: pago / empenhado * 100."
+        meta:
+          semantic_type: ratio
       - name: participacao_no_total_pct
         description: "Participação do órgão no gasto total pago do município no ano (%)."
+        meta:
+          semantic_type: ratio
       - name: rank_gasto_no_ano
         description: "Posição do órgão no ranking de maiores gastadores do ano (1 = maior)."
+        meta:
+          semantic_type: count

@@ -24,22 +24,38 @@ models:
         description: "Nome do mês em português (ex: Janeiro, Fevereiro)."
       - name: total_despesa_empenhada
         description: "Total de despesas empenhadas no mês em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_despesa_paga
         description: "Total de despesas pagas no mês em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_receita_arrecadada
         description: "Total de receitas arrecadadas no mês em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: resultado_primario
         description: "Resultado do mês: receita_arrecadada - despesa_paga (positivo = superávit)."
+        meta:
+          semantic_type: monetary_brl
       - name: is_superavit
         description: "Verdadeiro quando o resultado primário do mês é positivo."
       - name: percentual_execucao_despesa
         description: "Percentual de execução das despesas no mês: pago / empenhado * 100."
+        meta:
+          semantic_type: ratio
       - name: receita_acumulada_ano
         description: "Soma acumulada das receitas arrecadadas desde janeiro do exercício."
+        meta:
+          semantic_type: monetary_brl
       - name: despesa_acumulada_ano
         description: "Soma acumulada das despesas pagas desde janeiro do exercício."
+        meta:
+          semantic_type: monetary_brl
       - name: resultado_acumulado_ano
         description: "Resultado fiscal acumulado desde janeiro (positivo = superávit acumulado)."
+        meta:
+          semantic_type: monetary_brl
       - name: is_superavit_acumulado
         description: "Verdadeiro quando o resultado acumulado no ano é positivo."
       - name: situacao_fiscal_acumulada

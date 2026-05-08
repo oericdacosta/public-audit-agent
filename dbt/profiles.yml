@@ -6,3 +6,7 @@ civic_audit:
       type: duckdb
       path: "{{ env_var('DUCKDB_PATH', 'data/civic_audit.duckdb') }}"
       threads: 4
+    lint:
+      type: duckdb
+      path: ":memory:"
+      threads: 1

@@ -24,9 +24,20 @@ models:
       - name: contratos_vencidos
         description: "Quantidade de contratos com vigência expirada."
       - name: valor_total_contratos
-        description: "Soma de todos os valores de contratos do fornecedor em R$."
+        description: >
+          Soma de todos os valores de contratos do fornecedor em R$.
+          ATENÇÃO: calculado sobre valor_total de fct_contratos, que é 100% nulo na fonte atual.
+          Enquanto a API TCE-CE não retornar valores contratuais, este campo será sempre nulo.
+        meta:
+          semantic_type: monetary_brl
+          data_quality: always_null
       - name: maior_contrato_valor
-        description: "Valor do maior contrato individual celebrado pelo fornecedor."
+        description: >
+          Valor do maior contrato individual celebrado pelo fornecedor.
+          ATENÇÃO: idem — sempre nulo enquanto valor_total de fct_contratos for nulo.
+        meta:
+          semantic_type: monetary_brl
+          data_quality: always_null
       - name: municipios_contratantes
         description: "Número de municípios distintos onde o fornecedor possui contratos."
       - name: primeiro_contrato_em
@@ -36,6 +47,10 @@ models:
       - name: total_licitacoes_participou
         description: "Número de licitações em que o fornecedor participou como licitante."
       - name: flag_contratado_sem_licitacao
-        description: "Verdadeiro quando o fornecedor possui contratos mas não participou de nenhuma licitação."
+        description: >
+          Verdadeiro quando o fornecedor possui contratos mas não participou de nenhuma licitação.
+          LIMITAÇÃO: a verificação é feita por comparação de nome (nome_negociante vs nome_licitante),
+          que é frágil a variações de escrita. Participar de licitação ≠ vencer — o campo pode
+          indicar falso risco em empresas que participaram mas não foram vencedoras.
       - name: porte_fornecedor
         description: "Classificação por volume contratado: 'Grande (> R$1M)', 'Médio (R$100k–R$1M)', 'Pequeno (< R$100k)', 'Não informado'."

@@ -6,8 +6,8 @@ source_data as (
 
 , final as (
     select
-        municipio_id
-        , nome_municipio
+        cast(municipio_id as varchar) as municipio_id
+        , lower(nome_municipio) as nome_municipio
         , uf
     from source_data
 )

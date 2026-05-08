@@ -6,6 +6,8 @@ models:
       Agregacao anual de orcamento LOA por funcao, com comparacao de execucao.
       Permite responder "quanto foi previsto vs executado em Educacao em 2024?".
       Granularidade: uma linha por (municipio_id, ano_exercicio, codigo_funcao).
+      NOTA: funcoes com execucao orcamentaria mas sem previsao LOA nao aparecem nesta tabela —
+      use agg_despesas_por_orgao_ano para cobrir gastos sem orcamento fixado.
     columns:
       - name: municipio_id
         description: "Chave numérica do município (FK para dim_municipios). NÃO use para filtrar por nome de cidade."
@@ -19,18 +21,32 @@ models:
         description: "Nome da funcao (ex: Educacao, Saude, Cultura)."
       - name: total_fixado_loa
         description: "Total fixado na LOA para a funcao no ano em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_empenhado_ano
         description: "Total empenhado na execucao orcamentaria em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_liquidado_ano
         description: "Total liquidado em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: total_pago_ano
         description: "Total pago em R$."
+        meta:
+          semantic_type: monetary_brl
       - name: percentual_empenhado_loa
         description: "Percentual empenhado em relacao ao LOA fixado."
+        meta:
+          semantic_type: ratio
       - name: percentual_executado_loa
         description: "Percentual pago em relacao ao LOA fixado."
+        meta:
+          semantic_type: ratio
       - name: saldo_orcamentario
         description: "Saldo nao empenhado do LOA em R$ (fixado - empenhado)."
+        meta:
+          semantic_type: monetary_brl
       - name: rank_funcao_por_fixado
         description: "Ranking da funcao por valor fixado no ano (1 = maior orcamento)."
       - name: rank_funcao_por_executado

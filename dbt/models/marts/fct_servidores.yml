@@ -3,10 +3,16 @@ version: 2
 models:
   - name: fct_servidores
     description: >
-      Fato de servidores públicos (agentes públicos) por ano de exercício.
-      Uma linha por agente_publico_id. Contém cargo, vínculo, situação funcional
-      e carga horária. Usado para perguntas sobre quadro de pessoal.
+      Cadastro funcional de servidores públicos por ano de exercício.
+      Contém cargo, vínculo empregatício, situação funcional e carga horária semanal.
       Granularidade: uma linha por (agente_publico_id, ano_exercicio).
+
+      LIMITAÇÃO CONHECIDA — SEM dados de remuneração: a API TCE-CE não expõe folha
+      de pagamento nem salários individuais. O campo valor_carga_horaria representa
+      horas semanais de trabalho (ex: 44 horas), NÃO um valor monetário em reais.
+      O agente nunca deve inferir salário a partir desta tabela.
+      Para despesas com pessoal em nível agregado, use fct_despesas filtrado por
+      elemento de despesa ou função orçamentária de pessoal.
     columns:
       - name: agente_publico_id
         description: "Chave primária do registro de servidor."
@@ -33,6 +39,8 @@ models:
         description: "Verdadeiro quando o tipo de cargo é Efetivo."
       - name: valor_carga_horaria
         description: "Carga horária semanal do servidor em horas."
+        meta:
+          semantic_type: work_hours
       - name: faixa_carga_horaria
         description: "Classificação: 'Meio período' (<= 20h), 'Integral' (21–40h), 'Estendida' (> 40h), 'Não informada'."
       - name: updated_at

@@ -15,23 +15,8 @@ sources:
         columns:
           - name: id
             tests: [unique, not_null]
-      - name: balancete_receita_extra
-        description: "Balancete de receitas extra-orçamentárias mensais."
-        columns:
-          - name: id
-            tests: [unique, not_null]
       - name: contas_bancarias
         description: "Contas bancárias do município."
-        columns:
-          - name: id
-            tests: [unique, not_null]
-      - name: contratados
-        description: "Fornecedores contratados pelo município."
-        columns:
-          - name: id
-            tests: [unique, not_null]
-      - name: contratos
-        description: "Contratos celebrados pelo município."
         columns:
           - name: id
             tests: [unique, not_null]
@@ -50,11 +35,6 @@ sources:
         columns:
           - name: id
             tests: [unique, not_null]
-      - name: itens_notas_fiscais
-        description: "Itens individuais das notas fiscais."
-        columns:
-          - name: id
-            tests: [unique, not_null]
       - name: licitacoes
         description: "Processos licitatórios do município."
         columns:
@@ -65,28 +45,8 @@ sources:
         columns:
           - name: id
             tests: [unique, not_null]
-      - name: liquidacoes
-        description: "Liquidações de empenhos."
-        columns:
-          - name: id
-            tests: [unique, not_null]
       - name: municipios
         description: "Cadastro de municípios do Ceará."
-        columns:
-          - name: id
-            tests: [unique, not_null]
-      - name: negociantes
-        description: "Cadastro de fornecedores e negociantes."
-        columns:
-          - name: id
-            tests: [unique, not_null]
-      - name: notas_fiscais
-        description: "Notas fiscais emitidas para o município."
-        columns:
-          - name: id
-            tests: [unique, not_null]
-      - name: notas_pagamentos
-        description: "Notas de pagamento realizadas pelo município."
         columns:
           - name: id
             tests: [unique, not_null]
@@ -97,11 +57,6 @@ sources:
             tests: [unique, not_null]
       - name: orcamento_receita
         description: "Orçamento de receita por rubrica."
-        columns:
-          - name: id
-            tests: [unique, not_null]
-      - name: ordenadores
-        description: "Ordenadores de despesa do município."
         columns:
           - name: id
             tests: [unique, not_null]
@@ -117,16 +72,6 @@ sources:
             tests: [unique, not_null]
       - name: receitas
         description: "Receitas orçamentárias mensais do município."
-        columns:
-          - name: id
-            tests: [unique, not_null]
-      - name: taloes_extras
-        description: "Talões de receita extra-orçamentária."
-        columns:
-          - name: id
-            tests: [unique, not_null]
-      - name: taloes_receitas
-        description: "Talões de receita orçamentária."
         columns:
           - name: id
             tests: [unique, not_null]
